@@ -5,21 +5,20 @@
 ```shell
 $ forge build
 ```
+### Anvil
+
+```shell
+$ anvil --fork-url $FORK_URL_BASE
+```
 
 ### Test
 
 ```shell
-$ forge test
+$ forge test --rpc-url $RPC_URL
 ```
 
 ### Format
 
 ```shell
 $ forge fmt
-```
-
-### Anvil
-
-```shell
-$ anvil
 ```
