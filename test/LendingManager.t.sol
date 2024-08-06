@@ -81,7 +81,12 @@ contract LendingManagerTest is Test {
         );
 
         // supply amount to aaveInteraction
-        lendingManager.deposit(USDC, amount, LENDING_POOL_AAVE);
+        lendingManager.depositAave(
+            USDC,
+            amount,
+            address(lendingManager),
+            LENDING_POOL_AAVE
+        );
         assertEq(
             atoken.balanceOf(address(lendingManager)),
             amount,
@@ -98,7 +103,7 @@ contract LendingManagerTest is Test {
             address(lendingManager)
         );
         uint256 amountToWithdraw = 50000000;
-        lendingManager.withdraw(
+        lendingManager.withdrawAave(
             USDC,
             amountToWithdraw,
             address(lendingManager),
@@ -126,7 +131,7 @@ contract LendingManagerTest is Test {
             address(lendingManager)
         );
         uint256 amountToWithdraw = ausdcBalanceContract;
-        lendingManager.withdraw(
+        lendingManager.withdrawAave(
             USDC,
             amountToWithdraw,
             address(lendingManager),
@@ -163,7 +168,12 @@ contract LendingManagerTest is Test {
             "Allowance should be equal to the approved amount"
         );
         // supply amount to aaveInteraction
-        lendingManager.deposit(USDC, amount, LENDING_POOL_SEAMLESS);
+        lendingManager.depositAave(
+            USDC,
+            amount,
+            address(lendingManager),
+            LENDING_POOL_SEAMLESS
+        );
         // console.log(
         //     "atoken seamless",
         //     atokenSeamless.balanceOf(address(lendingManager))
@@ -186,7 +196,7 @@ contract LendingManagerTest is Test {
         // console.log("usdc before", usdcBalanceContract);
         // console.log("ausdc before", ausdcBalanceContract);
         uint256 amountToWithdraw = 50000000;
-        lendingManager.withdraw(
+        lendingManager.withdrawAave(
             USDC,
             amountToWithdraw,
             address(lendingManager),

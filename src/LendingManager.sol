@@ -5,18 +5,19 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./interfaces/aave/IPool.sol";
 
 contract LendingManager {
-    function deposit(
+    function depositAave(
         address _asset,
         uint256 _amount,
+        address _onBehalfOf,
         address lendingPool
     ) external {
         IPool pool = IPool(lendingPool);
         IERC20(_asset).transferFrom(msg.sender, address(this), _amount);
         IERC20(_asset).approve(address(pool), _amount);
-        pool.deposit(_asset, _amount, address(this), 0);
+        pool.deposit(_asset, _amount, _onBehalfOf, 0);
     }
 
-    function withdraw(
+    function withdrawAave(
         address _asset,
         uint256 _amount,
         address to,
