@@ -25,14 +25,7 @@ contract VaultTest is Test {
     function setUp() public {
         // contract instance
         token = IERC20(TOKEN);
-        vault = new Vault(
-            token,
-            0,
-            0,
-            0,
-            LENDING_POOL_AAVE,
-            LENDING_POOL_SEAMLESS
-        );
+        vault = new Vault(token, 0, LENDING_POOL_AAVE, LENDING_POOL_SEAMLESS);
 
         // console.log("Deployed Vault contract at: %s", address(vault));
 
@@ -217,40 +210,11 @@ contract VaultTest is Test {
     }
 
     function testDepositMint() public {
+        testDeposit();
         vm.startPrank(USER);
 
         // deal amount of TOKENs to USER
         deal(TOKEN, USER, amount2);
-
-        token.approve(address(vault), amount1);
-        assertEq(
-            token.allowance(USER, address(vault)),
-            amount1,
-            "ALLOWANCE ERROR: testDeposit"
-        );
-        console.log(".............before deposit.............");
-        console.log("USDC balance of user ", token.balanceOf(USER));
-        console.log("Shares of user ", vault.balanceOf(USER));
-        console.log(
-            "Atoken balance of Vault ",
-            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
-        );
-
-        vault.deposit(amount1, USER);
-        console.log(".............after deposit.............");
-        console.log("USDC balance of user ", token.balanceOf(USER));
-        console.log("Shares of user ", vault.balanceOf(USER));
-        console.log(
-            "Atoken balance of Vault ",
-            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
-        );
-
-        assertEq(vault.balanceOf(USER), amount1, "SHARES ERROR: testDeposit");
-        assertEq(
-            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault)),
-            amount1,
-            "ATOKEN ERROR: testDeposit"
-        );
 
         uint256 sharesToAssets = vault.previewMint(shares1);
         console.log("Shares To Assets", sharesToAssets);
@@ -287,6 +251,82 @@ contract VaultTest is Test {
             IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault)),
             sharesToAssets + amount1,
             "ATOKEN ERROR: testMint"
+        );
+        vm.stopPrank();
+    }
+
+    function testDepositWithdraw() public {
+        testDeposit();
+        vm.startPrank(USER);
+        uint256 withdrawAmount = amount1;
+        uint256 atokenVault = IERC20(vault.getCurrentProtocolAtoken())
+            .balanceOf(address(vault));
+
+        console.log(".............before withdraw.............");
+        console.log("USDC balance of user", token.balanceOf(USER));
+        console.log("Shares of user", vault.balanceOf(USER));
+        console.log("Atoken balance of Vault", atokenVault);
+
+        vault.withdraw(withdrawAmount, USER, USER);
+
+        console.log(".............after withdraw.............");
+        console.log("USDC balance of user", token.balanceOf(USER));
+        console.log("Shares of user", vault.balanceOf(USER));
+        console.log(
+            "Atoken balance of Vault",
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
+        );
+
+        assertEq(vault.balanceOf(USER), 0, "SHARES ERROR: testDepositWithdraw");
+        assertGe(
+            token.balanceOf(USER),
+            amount1,
+            "USDC ERROR: testDepositWithdraw"
+        );
+        assertEq(
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault)),
+            0,
+            "ATOKEN ERROR: testDepositWithdraw"
+        );
+        vm.stopPrank();
+    }
+
+    function testDepositMintWithdraw() public {
+        testDepositMint();
+        vm.startPrank(USER);
+        uint256 withdrawAmount = amount1;
+        uint256 atokenVault = IERC20(vault.getCurrentProtocolAtoken())
+            .balanceOf(address(vault));
+
+        console.log(".............before withdraw.............");
+        console.log("USDC balance of user", token.balanceOf(USER));
+        console.log("Shares of user", vault.balanceOf(USER));
+        console.log("Atoken balance of Vault", atokenVault);
+
+        vault.withdraw(withdrawAmount, USER, USER);
+
+        console.log(".............after withdraw.............");
+        console.log("USDC balance of user", token.balanceOf(USER));
+        console.log("Shares of user", vault.balanceOf(USER));
+        console.log(
+            "Atoken balance of Vault",
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
+        );
+
+        assertEq(
+            vault.balanceOf(USER),
+            50000000,
+            "SHARES ERROR: testDepositWithdraw"
+        );
+        assertGe(
+            token.balanceOf(USER),
+            1050000000,
+            "USDC ERROR: testDepositWithdraw"
+        );
+        assertEq(
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault)),
+            50000000,
+            "ATOKEN ERROR: testDepositWithdraw"
         );
         vm.stopPrank();
     }

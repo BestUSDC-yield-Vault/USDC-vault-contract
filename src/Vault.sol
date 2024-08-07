@@ -3,11 +3,11 @@
 pragma solidity ^0.8.21;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import "./ERC4626Fees.sol";
 import "./LendingManager.sol";
 
-contract Vault is ERC4626Fees, LendingManager {
+contract Vault is ERC4626, LendingManager {
     using Math for uint256;
 
     enum Protocol {
@@ -29,16 +29,10 @@ contract Vault is ERC4626Fees, LendingManager {
 
     constructor(
         IERC20 _asset,
-        uint256 _entryBasisPoints,
-        uint256 _exitBasisPoints,
         uint32 _duration,
         address _lendingPoolAave,
         address _lendingPoolSeamless
-    )
-        ERC4626Fees(_entryBasisPoints, _exitBasisPoints)
-        ERC4626(_asset)
-        ERC20("Vault Token", "vFFI")
-    {
+    ) ERC4626(_asset) ERC20("Vault Token", "vFFI") {
         stakeDuration = _duration;
         underlyingAsset = IERC20(_asset);
         lendingPoolAave = _lendingPoolAave;
@@ -92,17 +86,21 @@ contract Vault is ERC4626Fees, LendingManager {
     function previewDeposit(
         uint256 assets
     ) public view virtual override returns (uint256) {
-        uint256 fee = _feeOnTotal(assets, _entryFeeBasisPoints());
-
-        return _convertToShares(assets - fee, Math.Rounding.Floor);
+        return _convertToShares(assets, Math.Rounding.Floor);
     }
 
     /// @dev Preview adding an entry fee on mint. See {IERC4626-previewMint}.
     function previewMint(
         uint256 shares
     ) public view virtual override returns (uint256) {
-        uint256 assets = _convertToAssets(shares, Math.Rounding.Ceil);
-        return assets + _feeOnRaw(assets, _entryFeeBasisPoints());
+        return _convertToAssets(shares, Math.Rounding.Ceil);
+    }
+
+    /** @dev See {IERC4626-previewWithdraw}. */
+    function previewWithdraw(
+        uint256 assets
+    ) public view virtual override returns (uint256) {
+        return _convertToShares(assets, Math.Rounding.Ceil);
     }
 
     /**
@@ -149,14 +147,13 @@ contract Vault is ERC4626Fees, LendingManager {
         if (assets > maxAssets) {
             revert ERC4626ExceededMaxDeposit(receiver, assets, maxAssets);
         }
+
         uint256 shares = previewDeposit(assets);
-        emit Check(shares);
         _deposit(_msgSender(), receiver, assets, shares);
-        uint256 fee = _feeOnTotal(assets, _entryFeeBasisPoints());
-        afterDeposit(assets - fee);
+
+        afterDeposit(assets);
         // overridden
         stakeTimeEpochMapping[msg.sender] = uint32(block.timestamp);
-
         return shares;
     }
 
@@ -164,9 +161,14 @@ contract Vault is ERC4626Fees, LendingManager {
         uint256 shares,
         address receiver
     ) public virtual override nonZero(shares) returns (uint256 assets) {
-        require(shares <= maxMint(receiver), "ERC4626: mint more than max");
+        uint256 maxShares = maxMint(receiver);
+        if (shares > maxShares) {
+            revert ERC4626ExceededMaxMint(receiver, shares, maxShares);
+        }
+
         assets = previewMint(shares);
         _deposit(_msgSender(), receiver, assets, shares);
+
         afterDeposit(assets);
         stakeTimeEpochMapping[msg.sender] = uint32(block.timestamp);
         return assets;
@@ -185,6 +187,68 @@ contract Vault is ERC4626Fees, LendingManager {
                 address(underlyingAsset),
                 _amount,
                 address(this),
+                lendingPoolSeamless
+            );
+        }
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                          (2) Withdraw functions
+                          - withdraw
+                          - redeem
+    //////////////////////////////////////////////////////////////*/
+
+    function withdraw(
+        uint256 assets,
+        address receiver,
+        address owner
+    )
+        public
+        virtual
+        override
+        nonZero(assets)
+        canWithdraw(owner)
+        returns (uint256)
+    {
+        uint256 maxAssets = maxWithdraw(owner);
+        if (assets > maxAssets) {
+            revert ERC4626ExceededMaxWithdraw(owner, assets, maxAssets);
+        }
+
+        uint256 shares = previewWithdraw(assets);
+        uint256 aTokenBalance = IERC20(getCurrentProtocolAtoken()).balanceOf(
+            address(this)
+        );
+        uint256 totalSupplyShares = totalSupply();
+        uint256 aTokensToWithdraw = (shares * aTokenBalance) /
+            totalSupplyShares;
+
+        if (msg.sender != owner) {
+            _spendAllowance(owner, msg.sender, shares);
+        }
+
+        _burn(owner, shares);
+        uint256 amountWithdrawn = withdrawPool(aTokensToWithdraw, receiver);
+        emit Withdraw(msg.sender, receiver, owner, amountWithdrawn, shares);
+        return shares;
+    }
+
+    function withdrawPool(
+        uint256 _amount,
+        address _receiver
+    ) internal virtual nonZero(_amount) returns (uint256 amountWithdrawn) {
+        if (currentProtocol == Protocol.Aave) {
+            amountWithdrawn = withdrawAave(
+                address(underlyingAsset),
+                _amount,
+                _receiver,
+                lendingPoolAave
+            );
+        } else if (currentProtocol == Protocol.Seamless) {
+            amountWithdrawn = withdrawAave(
+                address(underlyingAsset),
+                _amount,
+                _receiver,
                 lendingPoolSeamless
             );
         }
