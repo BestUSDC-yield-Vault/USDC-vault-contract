@@ -10,9 +10,9 @@ contract LendingManager {
         uint256 _amount,
         address _onBehalfOf,
         address lendingPool
-    ) external {
+    ) public {
         IPool pool = IPool(lendingPool);
-        IERC20(_asset).transferFrom(msg.sender, address(this), _amount);
+        // IERC20(_asset).transferFrom(msg.sender, address(this), _amount); // to test this contract individually uncomment it.
         IERC20(_asset).approve(address(pool), _amount);
         pool.deposit(_asset, _amount, _onBehalfOf, 0);
     }
@@ -22,7 +22,7 @@ contract LendingManager {
         uint256 _amount,
         address to,
         address lendingPool
-    ) external returns (uint256) {
+    ) public returns (uint256) {
         IPool pool = IPool(lendingPool);
         IERC20(getATokenAddress(_asset, lendingPool)).approve(
             address(pool),

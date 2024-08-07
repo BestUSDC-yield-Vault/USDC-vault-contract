@@ -7,7 +7,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import "./ERC4626Fees.sol";
 import "./LendingManager.sol";
 
-abstract contract Vault is ERC4626Fees {
+contract Vault is ERC4626Fees, LendingManager {
     using Math for uint256;
 
     enum Protocol {
@@ -25,13 +25,15 @@ abstract contract Vault is ERC4626Fees {
     uint32 public stakeDuration;
     uint16 public referralCode;
 
-    LendingManager public lendingManager;
+    // LendingManager public lendingManager;
 
     constructor(
         IERC20 _asset,
         uint256 _entryBasisPoints,
         uint256 _exitBasisPoints,
-        uint32 _duration
+        uint32 _duration,
+        address _lendingPoolAave,
+        address _lendingPoolSeamless
     )
         ERC4626Fees(_entryBasisPoints, _exitBasisPoints)
         ERC4626(_asset)
@@ -39,8 +41,11 @@ abstract contract Vault is ERC4626Fees {
     {
         stakeDuration = _duration;
         underlyingAsset = IERC20(_asset);
+        lendingPoolAave = _lendingPoolAave;
+        lendingPoolSeamless = _lendingPoolSeamless;
     }
 
+    event Check(uint256);
     /*//////////////////////////////////////////////////////////////
                           MAPPINGS
     //////////////////////////////////////////////////////////////*/
@@ -122,6 +127,7 @@ abstract contract Vault is ERC4626Fees {
             revert ERC4626ExceededMaxDeposit(receiver, assets, maxAssets);
         }
         uint256 shares = previewDeposit(assets);
+        emit Check(shares);
         _deposit(_msgSender(), receiver, assets, shares);
         uint256 fee = _feeOnTotal(assets, _entryFeeBasisPoints());
         afterDeposit(assets - fee);
@@ -133,14 +139,14 @@ abstract contract Vault is ERC4626Fees {
 
     function afterDeposit(uint256 _amount) internal virtual nonZero(_amount) {
         if (currentProtocol == Protocol.Aave) {
-            lendingManager.depositAave(
+            depositAave(
                 address(underlyingAsset),
                 _amount,
                 address(this),
                 lendingPoolAave
             );
         } else if (currentProtocol == Protocol.Seamless) {
-            lendingManager.depositAave(
+            depositAave(
                 address(underlyingAsset),
                 _amount,
                 address(this),
@@ -149,14 +155,16 @@ abstract contract Vault is ERC4626Fees {
         }
     }
 
-    function getCurrentProtocolAtoken() internal view returns (address aToken) {
+    function getCurrentProtocolAtoken() public view returns (address aToken) {
+        // aToken = 0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB;
         if (currentProtocol == Protocol.Aave) {
-            aToken = lendingManager.getATokenAddress(
+            // aToken = 0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB;
+            aToken = getATokenAddress(
                 address(underlyingAsset),
                 lendingPoolAave
             );
         } else if (currentProtocol == Protocol.Seamless) {
-            aToken = lendingManager.getATokenAddress(
+            aToken = getATokenAddress(
                 address(underlyingAsset),
                 lendingPoolSeamless
             );

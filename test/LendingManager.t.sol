@@ -37,7 +37,7 @@ contract LendingManagerTest is Test {
 
         // setting up aToken of underlying token
         atoken = IERC20(aTOKEN);
-
+        console.log("aToken address", address(atoken));
         aaveInterestRate = lendingManager.getInterestRate(
             USDC,
             LENDING_POOL_AAVE
