@@ -7,9 +7,15 @@ import "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import "./LendingManager.sol";
 
+/**
+ * @title Vault
+ * @author Bhumi Sadariya
+ * @dev A vault contract that allows users to deposit asset(USDC) and earn best yield from multiple lending protocols.
+ */
 contract Vault is ERC4626, LendingManager {
     using Math for uint256;
 
+    // Enum to represent different protocols
     enum Protocol {
         Aave,
         Extrafi,
@@ -18,15 +24,25 @@ contract Vault is ERC4626, LendingManager {
     }
     Protocol public currentProtocol = Protocol.Aave;
 
+    // Addresses of the lending pools
     address public lendingPoolAave;
     address public lendingPoolSeamless;
 
+    // Underlying asset and other configuration variables
     IERC20 public underlyingAsset;
     uint32 public stakeDuration;
     uint16 public referralCode;
 
-    // LendingManager public lendingManager;
+    // Mapping to keep track of staking times
+    mapping(address lender => uint32 epoch) public stakeTimeEpochMapping;
 
+    /**
+     * @dev Constructor to initialize the vault.
+     * @param _asset The underlying asset of the vault.
+     * @param _duration The staking duration.
+     * @param _lendingPoolAave  The address of the Aave lending pool.
+     * @param _lendingPoolSeamless The address of the Seamless lending pool.
+     */
     constructor(
         IERC20 _asset,
         uint32 _duration,
@@ -39,28 +55,27 @@ contract Vault is ERC4626, LendingManager {
         lendingPoolSeamless = _lendingPoolSeamless;
     }
 
-    event Check(uint256);
-    /*//////////////////////////////////////////////////////////////
-                          MAPPINGS
-    //////////////////////////////////////////////////////////////*/
-
-    mapping(address lender => uint32 epoch) public stakeTimeEpochMapping;
-
     /*//////////////////////////////////////////////////////////////
                           MODIFIERS
     //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @dev Ensures the vaule is non-zero.
+     * @param _value The value to check.
+     */
     modifier nonZero(uint256 _value) {
-        require(
-            _value != 0,
-            "Value must be greater than zero. Please enter a valid amount"
-        );
+        require(_value != 0, "Value must be greater than zero");
         _;
     }
 
+    /**
+     * @dev Ensures the owner can withdraw their funds.
+     * @param _owner The address of the owner.
+     */
     modifier canWithdraw(address _owner) {
         require(
-            getWithdrawEpoch(_owner) <= _blockTimestamp(),
-            "Not eligible right now, funds can be redeemed after locking period"
+            getWithdrawEpoch(_owner) <= uint32(block.timestamp),
+            "Not eligible for withdrawal yet"
         );
         _;
     }
@@ -69,27 +84,27 @@ contract Vault is ERC4626, LendingManager {
                           VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    /**
+     * @dev Gets the withdrawal epoch for a given address.
+     * @param _owner The address of the owner.
+     * @return The withdrawal epoch.
+     */
     function getWithdrawEpoch(address _owner) public view returns (uint32) {
         return stakeTimeEpochMapping[_owner] + stakeDuration;
-    }
-
-    // for gas efficiency
-    function _blockTimestamp() internal view virtual returns (uint32) {
-        return uint32(block.timestamp);
     }
 
     /*//////////////////////////////////////////////////////////////
                           ERC4626 overrides
     //////////////////////////////////////////////////////////////*/
 
-    /// @dev Preview taking an entry fee on deposit. See {IERC4626-previewDeposit}.
+    /** @dev See {IERC4626-previewDeposit}. */
     function previewDeposit(
         uint256 assets
     ) public view virtual override returns (uint256) {
         return _convertToShares(assets, Math.Rounding.Floor);
     }
 
-    /// @dev Preview adding an entry fee on mint. See {IERC4626-previewMint}.
+    /** @dev See {IERC4626-previewMint}. */
     function previewMint(
         uint256 shares
     ) public view virtual override returns (uint256) {
@@ -141,11 +156,15 @@ contract Vault is ERC4626, LendingManager {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          (3) DEPOSIT functions
-                          - deposit
-                          - mint
+                         DEPOSIT functions
     //////////////////////////////////////////////////////////////*/
 
+    /**
+     * @dev Deposits the specified amount of assets and mints shares to the receiver.
+     * @param assets The amount of assets to deposit.
+     * @param receiver The address receiving the shares.
+     * @return The amount of shares minted.
+     */
     function deposit(
         uint256 assets,
         address receiver
@@ -154,43 +173,48 @@ contract Vault is ERC4626, LendingManager {
         if (assets > maxAssets) {
             revert ERC4626ExceededMaxDeposit(receiver, assets, maxAssets);
         }
-
         uint256 shares = previewDeposit(assets);
         _deposit(_msgSender(), receiver, assets, shares);
-
         afterDeposit(assets);
-        // overridden
         stakeTimeEpochMapping[msg.sender] = uint32(block.timestamp);
         return shares;
     }
 
+    /**
+     * @dev Mints the specified amount of shares to the receiver.
+     * @param shares The amount of shares to mint.
+     * @param receiver The address receiving the assets.
+     * @return The amount of assets deposited.
+     */
     function mint(
         uint256 shares,
         address receiver
-    ) public virtual override nonZero(shares) returns (uint256 assets) {
+    ) public virtual override nonZero(shares) returns (uint256) {
         uint256 maxShares = maxMint(receiver);
         if (shares > maxShares) {
             revert ERC4626ExceededMaxMint(receiver, shares, maxShares);
         }
-
-        assets = previewMint(shares);
+        uint256 assets = previewMint(shares);
         _deposit(_msgSender(), receiver, assets, shares);
-
         afterDeposit(assets);
         stakeTimeEpochMapping[msg.sender] = uint32(block.timestamp);
         return assets;
     }
 
+    /**
+     * @dev Internal function to handle post-deposit actions.
+     * @param _amount The amount deposited.
+     */
     function afterDeposit(uint256 _amount) internal virtual nonZero(_amount) {
         if (currentProtocol == Protocol.Aave) {
-            depositAave(
+            depositToLendingPool(
                 address(underlyingAsset),
                 _amount,
                 address(this),
                 lendingPoolAave
             );
         } else if (currentProtocol == Protocol.Seamless) {
-            depositAave(
+            depositToLendingPool(
                 address(underlyingAsset),
                 _amount,
                 address(this),
@@ -200,11 +224,16 @@ contract Vault is ERC4626, LendingManager {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          (2) Withdraw functions
-                          - withdraw
-                          - redeem
+                          Withdraw functions
     //////////////////////////////////////////////////////////////*/
 
+    /**
+     * @dev Withdraws the specified amount of assets and burns the corresponding shares from the owner.
+     * @param assets The amount of assets to withdraw.
+     * @param receiver The address receiving the assets.
+     * @param owner The address of the owner of the shares.
+     * @return The amount of shares burned.
+     */
     function withdraw(
         uint256 assets,
         address receiver,
@@ -226,21 +255,28 @@ contract Vault is ERC4626, LendingManager {
         uint256 aTokenBalance = IERC20(getCurrentProtocolAtoken()).balanceOf(
             address(this)
         );
-        uint256 totalSupplyShares = totalSupply();
-        uint256 aTokensToWithdraw = (shares * aTokenBalance) /
-            totalSupplyShares;
+        uint256 aTokensToWithdraw = (shares * aTokenBalance) / totalSupply();
 
         if (msg.sender != owner) {
             _spendAllowance(owner, msg.sender, shares);
         }
 
         _burn(owner, shares);
-        uint256 amountWithdrawn = withdrawPool(aTokensToWithdraw, receiver);
+        uint256 amountWithdrawn = withdrawFromLendingPool(
+            aTokensToWithdraw,
+            receiver
+        );
         emit Withdraw(msg.sender, receiver, owner, amountWithdrawn, shares);
         return shares;
     }
 
-    /** @dev See {IERC4626-redeem}. */
+    /**
+     * @dev Redeems the specified amount of shares and transfers the corresponding assets to the receiver.
+     * @param shares The amount of shares to redeem.
+     * @param receiver The address receiving the assets.
+     * @param owner The address of the owner of the shares.
+     * @return The amount of assets redeemed.
+     */
     function redeem(
         uint256 shares,
         address receiver,
@@ -259,47 +295,60 @@ contract Vault is ERC4626, LendingManager {
         }
 
         uint256 assets = previewRedeem(shares);
-        uint256 totalSupplyShares = totalSupply();
         uint256 aTokenBalance = IERC20(getCurrentProtocolAtoken()).balanceOf(
             address(this)
         );
-        uint256 aTokensToWithdraw = (shares * aTokenBalance) /
-            totalSupplyShares;
+        uint256 aTokensToWithdraw = (shares * aTokenBalance) / totalSupply();
 
         if (msg.sender != owner) {
             _spendAllowance(owner, msg.sender, shares);
         }
 
         _burn(owner, shares);
-        uint256 amountWithdrawn = withdrawPool(aTokensToWithdraw, receiver);
+        uint256 amountWithdrawn = withdrawFromLendingPool(
+            aTokensToWithdraw,
+            receiver
+        );
         emit Withdraw(msg.sender, receiver, owner, amountWithdrawn, shares);
 
         return assets;
     }
 
-    function withdrawPool(
+    /**
+     * @dev Internal function to handle withdrawal from the lending pool.
+     * @param _amount The amount to withdraw.
+     * @param _receiver The address receiving the withdrawn assets.
+     * @return The amount withdrawn.
+     */
+    function withdrawFromLendingPool(
         uint256 _amount,
         address _receiver
-    ) internal virtual nonZero(_amount) returns (uint256 amountWithdrawn) {
+    ) internal virtual nonZero(_amount) returns (uint256) {
+        uint256 amountWithdrawn;
         if (currentProtocol == Protocol.Aave) {
-            amountWithdrawn = withdrawAave(
+            amountWithdrawn = withdrawFromLendingPool(
                 address(underlyingAsset),
                 _amount,
                 _receiver,
                 lendingPoolAave
             );
         } else if (currentProtocol == Protocol.Seamless) {
-            amountWithdrawn = withdrawAave(
+            amountWithdrawn = withdrawFromLendingPool(
                 address(underlyingAsset),
                 _amount,
                 _receiver,
                 lendingPoolSeamless
             );
         }
+        return amountWithdrawn;
     }
 
-    function getCurrentProtocolAtoken() public view returns (address aToken) {
-        // aToken = 0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB;
+    /**
+     * @dev Gets the address of the aToken for the current protocol.
+     * @return The address of the aToken.
+     */
+    function getCurrentProtocolAtoken() public view returns (address) {
+        address aToken;
         if (currentProtocol == Protocol.Aave) {
             // aToken = 0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB;
             aToken = getATokenAddress(
@@ -312,5 +361,6 @@ contract Vault is ERC4626, LendingManager {
                 lendingPoolSeamless
             );
         }
+        return aToken;
     }
 }

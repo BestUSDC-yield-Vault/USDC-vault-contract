@@ -81,7 +81,7 @@ contract LendingManagerTest is Test {
         );
 
         // supply amount to aaveInteraction
-        lendingManager.depositAave(
+        lendingManager.depositToLendingPool(
             USDC,
             amount,
             address(lendingManager),
@@ -103,7 +103,7 @@ contract LendingManagerTest is Test {
             address(lendingManager)
         );
         uint256 amountToWithdraw = 50000000;
-        lendingManager.withdrawAave(
+        lendingManager.withdrawFromLendingPool(
             USDC,
             amountToWithdraw,
             address(lendingManager),
@@ -131,7 +131,7 @@ contract LendingManagerTest is Test {
             address(lendingManager)
         );
         uint256 amountToWithdraw = ausdcBalanceContract;
-        lendingManager.withdrawAave(
+        lendingManager.withdrawFromLendingPool(
             USDC,
             amountToWithdraw,
             address(lendingManager),
@@ -168,7 +168,7 @@ contract LendingManagerTest is Test {
             "Allowance should be equal to the approved amount"
         );
         // supply amount to aaveInteraction
-        lendingManager.depositAave(
+        lendingManager.depositToLendingPool(
             USDC,
             amount,
             address(lendingManager),
@@ -196,7 +196,7 @@ contract LendingManagerTest is Test {
         // console.log("usdc before", usdcBalanceContract);
         // console.log("ausdc before", ausdcBalanceContract);
         uint256 amountToWithdraw = 50000000;
-        lendingManager.withdrawAave(
+        lendingManager.withdrawFromLendingPool(
             USDC,
             amountToWithdraw,
             address(lendingManager),
