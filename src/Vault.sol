@@ -103,6 +103,13 @@ contract Vault is ERC4626, LendingManager {
         return _convertToShares(assets, Math.Rounding.Ceil);
     }
 
+    /** @dev See {IERC4626-previewRedeem}. */
+    function previewRedeem(
+        uint256 shares
+    ) public view virtual override returns (uint256) {
+        return _convertToAssets(shares, Math.Rounding.Floor);
+    }
+
     /**
      * @dev Internal conversion function (from assets to shares) with support for rounding direction.
      */
@@ -231,6 +238,43 @@ contract Vault is ERC4626, LendingManager {
         uint256 amountWithdrawn = withdrawPool(aTokensToWithdraw, receiver);
         emit Withdraw(msg.sender, receiver, owner, amountWithdrawn, shares);
         return shares;
+    }
+
+    /** @dev See {IERC4626-redeem}. */
+    function redeem(
+        uint256 shares,
+        address receiver,
+        address owner
+    )
+        public
+        virtual
+        override
+        nonZero(shares)
+        canWithdraw(owner)
+        returns (uint256)
+    {
+        uint256 maxShares = maxRedeem(owner);
+        if (shares > maxShares) {
+            revert ERC4626ExceededMaxRedeem(owner, shares, maxShares);
+        }
+
+        uint256 assets = previewRedeem(shares);
+        uint256 totalSupplyShares = totalSupply();
+        uint256 aTokenBalance = IERC20(getCurrentProtocolAtoken()).balanceOf(
+            address(this)
+        );
+        uint256 aTokensToWithdraw = (shares * aTokenBalance) /
+            totalSupplyShares;
+
+        if (msg.sender != owner) {
+            _spendAllowance(owner, msg.sender, shares);
+        }
+
+        _burn(owner, shares);
+        uint256 amountWithdrawn = withdrawPool(aTokensToWithdraw, receiver);
+        emit Withdraw(msg.sender, receiver, owner, amountWithdrawn, shares);
+
+        return assets;
     }
 
     function withdrawPool(
