@@ -11,6 +11,8 @@ contract VaultTest is Test {
     uint256 amount1;
     uint256 amount2;
     uint256 amount3;
+    uint256 shares1;
+    uint256 shares2;
 
     // Mainnet fork configuration
     address TOKEN = vm.envAddress("USDC_ADDRESS");
@@ -38,6 +40,8 @@ contract VaultTest is Test {
         amount1 = 100000000; //100 USDC
         amount2 = 1000000000; //1000 USDC
         amount3 = 100000000; // 100 USDC
+        shares1 = 50000000; //50 USDC
+        shares2 = 500000000; //500 USDC
     }
 
     function testDeposit() public {
@@ -50,7 +54,7 @@ contract VaultTest is Test {
         assertEq(
             token.allowance(USER, address(vault)),
             amount1,
-            "ALLOWANCE ERROR"
+            "ALLOWANCE ERROR: testDeposit"
         );
         console.log(".............before deposit.............");
         console.log("USDC balance of user ", token.balanceOf(USER));
@@ -69,11 +73,11 @@ contract VaultTest is Test {
             IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
         );
 
-        assertEq(vault.balanceOf(USER), amount1, "Not received enough funds");
+        assertEq(vault.balanceOf(USER), amount1, "SHARES ERROR: testDeposit");
         assertEq(
             IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault)),
             amount1,
-            "Not received enough funds"
+            "ATOKEN ERROR: testDeposit"
         );
 
         vm.stopPrank();
@@ -90,7 +94,7 @@ contract VaultTest is Test {
         assertEq(
             token.allowance(USER2, address(vault)),
             amount2,
-            "ALLOWANCE ERROR"
+            "ALLOWANCE ERROR: testDepositUSER2"
         );
         console.log(".............before deposit.............");
         console.log("USDC balance of USER2 ", token.balanceOf(USER2));
@@ -109,11 +113,61 @@ contract VaultTest is Test {
             IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
         );
 
-        assertEq(vault.balanceOf(USER2), amount2, "Not received enough funds");
+        assertEq(
+            vault.balanceOf(USER2),
+            amount2,
+            "SHARES ERROR: testDepositUSER2"
+        );
         assertEq(
             IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault)),
             amount1 + amount2,
-            "Not received enough funds"
+            "ATOKEN ERROR: testDepositUSER2"
+        );
+
+        vm.stopPrank();
+    }
+
+    function testMint() public {
+        vm.startPrank(USER);
+
+        // deal amount of TOKENs to USER
+        deal(TOKEN, USER, amount1);
+
+        uint256 sharesToAssets = vault.previewMint(shares1);
+        console.log("Shares To Assets", sharesToAssets);
+
+        token.approve(address(vault), sharesToAssets);
+        assertEq(
+            token.allowance(USER, address(vault)),
+            sharesToAssets,
+            "ALLOWANCE ERROR: testMint"
+        );
+        console.log(".............before mint.............");
+        console.log("USDC balance of user ", token.balanceOf(USER));
+        console.log("Shares of user ", vault.balanceOf(USER));
+        console.log(
+            "Atoken balance of Vault ",
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
+        );
+
+        vault.mint(shares1, USER);
+        console.log(".............after deposit.............");
+        console.log("USDC balance of user ", token.balanceOf(USER));
+        console.log("Shares of user ", vault.balanceOf(USER));
+        console.log(
+            "Atoken balance of Vault ",
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
+        );
+
+        assertEq(
+            vault.balanceOf(USER),
+            sharesToAssets,
+            "SHARES ERROR: testMint"
+        );
+        assertEq(
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault)),
+            sharesToAssets,
+            "ATOKEN ERROR: testMint"
         );
 
         vm.stopPrank();

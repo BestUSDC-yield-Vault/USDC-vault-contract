@@ -88,13 +88,21 @@ contract Vault is ERC4626Fees, LendingManager {
                           ERC4626 overrides
     //////////////////////////////////////////////////////////////*/
 
-    /** @dev See {IERC4626-previewDeposit}. */
+    /// @dev Preview taking an entry fee on deposit. See {IERC4626-previewDeposit}.
     function previewDeposit(
         uint256 assets
     ) public view virtual override returns (uint256) {
         uint256 fee = _feeOnTotal(assets, _entryFeeBasisPoints());
 
         return _convertToShares(assets - fee, Math.Rounding.Floor);
+    }
+
+    /// @dev Preview adding an entry fee on mint. See {IERC4626-previewMint}.
+    function previewMint(
+        uint256 shares
+    ) public view virtual override returns (uint256) {
+        uint256 assets = _convertToAssets(shares, Math.Rounding.Ceil);
+        return assets + _feeOnRaw(assets, _entryFeeBasisPoints());
     }
 
     /**
@@ -108,6 +116,21 @@ contract Vault is ERC4626Fees, LendingManager {
             assets.mulDiv(
                 totalSupply() + 10 ** _decimalsOffset(),
                 IERC20(getCurrentProtocolAtoken()).balanceOf(address(this)) + 1,
+                rounding
+            );
+    }
+
+    /**
+     * @dev Internal conversion function (from shares to assets) with support for rounding direction.
+     */
+    function _convertToAssets(
+        uint256 shares,
+        Math.Rounding rounding
+    ) internal view virtual override returns (uint256) {
+        return
+            shares.mulDiv(
+                IERC20(getCurrentProtocolAtoken()).balanceOf(address(this)) + 1,
+                totalSupply() + 10 ** _decimalsOffset(),
                 rounding
             );
     }
@@ -135,6 +158,18 @@ contract Vault is ERC4626Fees, LendingManager {
         stakeTimeEpochMapping[msg.sender] = uint32(block.timestamp);
 
         return shares;
+    }
+
+    function mint(
+        uint256 shares,
+        address receiver
+    ) public virtual override nonZero(shares) returns (uint256 assets) {
+        require(shares <= maxMint(receiver), "ERC4626: mint more than max");
+        assets = previewMint(shares);
+        _deposit(_msgSender(), receiver, assets, shares);
+        afterDeposit(assets);
+        stakeTimeEpochMapping[msg.sender] = uint32(block.timestamp);
+        return assets;
     }
 
     function afterDeposit(uint256 _amount) internal virtual nonZero(_amount) {
