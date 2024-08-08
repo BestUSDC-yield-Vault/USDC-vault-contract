@@ -48,7 +48,11 @@ contract Vault is ERC4626, LendingManager {
         uint32 _duration,
         address _lendingPoolAave,
         address _lendingPoolSeamless
-    ) ERC4626(_asset) ERC20("Vault Token", "vFFI") {
+    )
+        ERC4626(_asset)
+        ERC20("Vault Token", "vFFI")
+        LendingManager(address(_asset))
+    {
         stakeDuration = _duration;
         underlyingAsset = IERC20(_asset);
         lendingPoolAave = _lendingPoolAave;
@@ -207,19 +211,9 @@ contract Vault is ERC4626, LendingManager {
      */
     function afterDeposit(uint256 _amount) internal virtual nonZero(_amount) {
         if (currentProtocol == Protocol.Aave) {
-            depositToLendingPool(
-                address(underlyingAsset),
-                _amount,
-                address(this),
-                lendingPoolAave
-            );
+            depositToLendingPool(_amount, address(this), lendingPoolAave);
         } else if (currentProtocol == Protocol.Seamless) {
-            depositToLendingPool(
-                address(underlyingAsset),
-                _amount,
-                address(this),
-                lendingPoolSeamless
-            );
+            depositToLendingPool(_amount, address(this), lendingPoolSeamless);
         }
     }
 
@@ -327,14 +321,12 @@ contract Vault is ERC4626, LendingManager {
         uint256 amountWithdrawn;
         if (currentProtocol == Protocol.Aave) {
             amountWithdrawn = withdrawFromLendingPool(
-                address(underlyingAsset),
                 _amount,
                 _receiver,
                 lendingPoolAave
             );
         } else if (currentProtocol == Protocol.Seamless) {
             amountWithdrawn = withdrawFromLendingPool(
-                address(underlyingAsset),
                 _amount,
                 _receiver,
                 lendingPoolSeamless
@@ -351,15 +343,9 @@ contract Vault is ERC4626, LendingManager {
         address aToken;
         if (currentProtocol == Protocol.Aave) {
             // aToken = 0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB;
-            aToken = getATokenAddress(
-                address(underlyingAsset),
-                lendingPoolAave
-            );
+            aToken = getATokenAddress(lendingPoolAave);
         } else if (currentProtocol == Protocol.Seamless) {
-            aToken = getATokenAddress(
-                address(underlyingAsset),
-                lendingPoolSeamless
-            );
+            aToken = getATokenAddress(lendingPoolSeamless);
         }
         return aToken;
     }
