@@ -172,4 +172,19 @@ contract LendingManager {
         ILendingPool pool = ILendingPool(_lendingPool);
         return pool.exchangeRateOfReserve(_reserveId);
     }
+
+    //need to change this
+    function getInterestRateOfMoonWell(
+        address lendingPool
+    ) public view returns (uint256 rate) {
+        IMToken pool = IMToken(lendingPool);
+        rate = pool.supplyRatePerTimestamp();
+    }
+
+    function exchangeRateOfMoonWell(
+        address lendingPool
+    ) public view returns (uint256 rate) {
+        IMToken pool = IMToken(lendingPool);
+        rate = pool.exchangeRateStored();
+    }
 }
