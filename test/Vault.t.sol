@@ -88,7 +88,7 @@ contract VaultTest is Test {
         );
         vm.stopPrank();
 
-        // user2 mints 1000 shares
+        // user2 mints 500 shares
         vm.startPrank(USER2);
         deal(TOKEN, USER2, amount2);
 
@@ -229,7 +229,7 @@ contract VaultTest is Test {
 
         assertEq(vault.balanceOf(USER2), 0, "SHARES ERROR: testRedeem");
         // assertGe(token.balanceOf(USER2), 500000000, "USDC ERROR: testRedeem");
-        assertLe(
+        assertGe(
             IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault)),
             90000000,
             "ATOKEN ERROR: testRedeem"
@@ -651,6 +651,287 @@ contract VaultTest is Test {
             "ATOKEN ERROR: testDepositWithdraw"
         );
 
+        vm.stopPrank();
+    }
+
+    function testRebalancing() public {
+        // user1 deposits 100 USDC
+        vm.startPrank(USER);
+
+        deal(TOKEN, USER, amount1);
+        token.approve(address(vault), amount1);
+
+        assertEq(
+            token.allowance(USER, address(vault)),
+            amount1,
+            "ALLOWANCE ERROR: testDeposit"
+        );
+        console.log(".............before USER deposit 100 USDC.............");
+        console.log("USDC balance of user ", token.balanceOf(USER));
+        console.log("Shares of user ", vault.balanceOf(USER));
+        console.log(
+            "Atoken balance of Vault ",
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
+        );
+
+        vault.deposit(amount1, USER);
+        console.log(".............after USER deposit 100 USDC.............");
+        console.log("USDC balance of user ", token.balanceOf(USER));
+        console.log("Shares of user ", vault.balanceOf(USER));
+        console.log(
+            "Atoken balance of Vault ",
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
+        );
+
+        assertEq(vault.balanceOf(USER), amount1, "SHARES ERROR: testDeposit");
+        assertEq(
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault)),
+            amount1,
+            "ATOKEN ERROR: testDeposit"
+        );
+        vm.stopPrank();
+
+        // user2 mints 500 shares
+        vm.startPrank(USER2);
+        deal(TOKEN, USER2, amount2);
+
+        token.approve(address(vault), shares2);
+
+        assertEq(
+            token.allowance(USER2, address(vault)),
+            shares2,
+            "ALLOWANCE ERROR: testMint"
+        );
+        console.log(".............before USER2 mints 500 shares.............");
+        console.log("USDC balance of USER2 ", token.balanceOf(USER2));
+        console.log("Shares of USER2 ", vault.balanceOf(USER2));
+        console.log(
+            "Atoken balance of Vault ",
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
+        );
+
+        vault.mint(shares2, USER2);
+        console.log(".............after USER2 mints 500 shares.............");
+        console.log("USDC balance of USER2 ", token.balanceOf(USER2));
+        console.log("Shares of USER2 ", vault.balanceOf(USER2));
+        console.log(
+            "Atoken balance of Vault ",
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
+        );
+
+        assertEq(vault.balanceOf(USER2), shares2, "SHARES ERROR: testMint");
+        assertEq(
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault)),
+            vault.balanceOf(USER) + shares2,
+            "ATOKEN ERROR: testMint"
+        );
+        vm.stopPrank();
+
+        // user1 withdraws 20 USDC from 100 USDC deposited
+        vm.startPrank(USER);
+
+        uint256 withdrawAmount = 20000000; // 20 USDC
+        uint256 atokenVault = IERC20(vault.getCurrentProtocolAtoken())
+            .balanceOf(address(vault));
+
+        console.log(
+            ".............before USER1 withdraw 20 USDC from 100 USDC deposited............."
+        );
+        console.log("USDC balance of user", token.balanceOf(USER));
+        console.log("Shares of user", vault.balanceOf(USER));
+        console.log("Atoken balance of Vault", atokenVault);
+
+        vault.withdraw(withdrawAmount, USER, USER);
+
+        console.log(
+            ".............after USER1 withdraw 20 USDC from 100 USDC deposited............."
+        );
+        console.log("USDC balance of user", token.balanceOf(USER));
+        console.log("Shares of user", vault.balanceOf(USER));
+        console.log(
+            "Atoken balance of Vault",
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
+        );
+        assertEq(vault.balanceOf(USER), 80000000, "SHARES ERROR: testWithdraw");
+        assertGe(
+            token.balanceOf(USER),
+            withdrawAmount,
+            "USDC ERROR: testWithdraw"
+        );
+        assertLe(
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault)),
+            580000000,
+            "ATOKEN ERROR: testWithdraw"
+        );
+        assertEq(
+            uint(vault.currentProtocol()),
+            uint(Vault.Protocol.Aave),
+            "CURRENT PROTOCOL ERROR"
+        );
+        console.log("CURRENT PROTOCOL", uint(vault.currentProtocol()));
+        vm.stopPrank();
+
+        // owner calls rebalance function - extrafi
+        console.log("Before Rebalancing");
+        console.log(
+            "Current AToken of AAVE Balance",
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
+        );
+        vault.rebalance(Vault.Protocol.ExtraFi);
+        console.log("After Rebalancing");
+        console.log("CURRENT PROTOCOL", uint(vault.currentProtocol()));
+        console.log(
+            "Current EToken of ExtraFi Balance",
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
+        );
+        assertEq(
+            uint(vault.currentProtocol()),
+            uint(Vault.Protocol.ExtraFi),
+            "CURRENT PROTOCOL ERROR"
+        );
+
+        // user2 withdraws 500 USDC
+        vm.startPrank(USER2);
+
+        console.log(".............before USER2 withdraw 500 USDC.............");
+        console.log("USDC balance of USER2", token.balanceOf(USER2));
+        console.log("Shares of USER2", vault.balanceOf(USER2));
+        console.log(
+            "Atoken balance of Vault",
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
+        );
+
+        vault.withdraw(shares2, USER2, USER2);
+
+        console.log(".............after USER2 withdraw 500 USDC.............");
+        console.log("USDC balance of USER2", token.balanceOf(USER2));
+        console.log("Shares of USER2", vault.balanceOf(USER2));
+        console.log(
+            "Atoken balance of Vault",
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
+        );
+        assertEq(vault.balanceOf(USER2), 0, "SHARES ERROR: testWithdraw");
+        assertLe(token.balanceOf(USER2), shares2, "USDC ERROR: testWithdraw");
+        assertLe(
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault)),
+            80000000,
+            "ATOKEN ERROR: testWithdraw"
+        );
+        vm.stopPrank();
+
+        // user2 mints 50 shares
+        vm.startPrank(USER2);
+        deal(TOKEN, USER2, shares1);
+
+        token.approve(address(vault), shares1);
+
+        assertEq(
+            token.allowance(USER2, address(vault)),
+            shares1,
+            "ALLOWANCE ERROR: testMint"
+        );
+        console.log(".............before USER2 mints 50 shares.............");
+        console.log("USDC balance of USER2 ", token.balanceOf(USER2));
+        console.log("Shares of USER2 ", vault.balanceOf(USER2));
+        console.log(
+            "Atoken balance of Vault ",
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
+        );
+
+        vault.mint(shares1, USER2);
+        console.log(".............after USER2 mints 50 shares.............");
+        console.log("USDC balance of USER2 ", token.balanceOf(USER2));
+        console.log("Shares of USER2 ", vault.balanceOf(USER2));
+        console.log(
+            "Atoken balance of Vault ",
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
+        );
+
+        assertEq(vault.balanceOf(USER2), shares1, "SHARES ERROR: testMint");
+        assertLe(
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault)),
+            vault.balanceOf(USER) + shares1,
+            "ATOKEN ERROR: testMint"
+        );
+        vm.stopPrank();
+
+        // owner calls rebalance function - moonwell
+        console.log("Before Rebalancing");
+        console.log(
+            "Current EToken of ExtraFi Balance",
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
+        );
+        vault.rebalance(Vault.Protocol.Moonwell);
+        console.log("After Rebalancing");
+        console.log("CURRENT PROTOCOL", uint(vault.currentProtocol()));
+        console.log(
+            "Current MToken of Moonwell Balance",
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
+        );
+        assertEq(
+            uint(vault.currentProtocol()),
+            uint(Vault.Protocol.Moonwell),
+            "CURRENT PROTOCOL ERROR"
+        );
+
+        // user1 withdraws 80 USDC
+        vm.startPrank(USER);
+
+        uint256 withdrawAmount1 = 80000000; // 80 USDC
+
+        console.log(".............before USER1 withdraw 80 USDC.............");
+        console.log("USDC balance of user", token.balanceOf(USER));
+        console.log("Shares of user", vault.balanceOf(USER));
+        console.log(
+            "Atoken balance of Vault",
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
+        );
+
+        vault.redeem(withdrawAmount1, USER, USER);
+
+        console.log(".............after USER1 withdraw 80 USDC.............");
+        console.log("USDC balance of user", token.balanceOf(USER));
+        console.log("Shares of user", vault.balanceOf(USER));
+        console.log(
+            "Atoken balance of Vault",
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
+        );
+        assertEq(vault.balanceOf(USER), 0, "SHARES ERROR: testWithdraw");
+        assertLe(token.balanceOf(USER), amount1, "USDC ERROR: testWithdraw");
+        assertGe(
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault)),
+            130000000,
+            "ATOKEN ERROR: testWithdraw"
+        );
+        vm.stopPrank();
+
+        // user2 withdraws 50 USDC
+        vm.startPrank(USER2);
+
+        console.log(".............before USER2 withdraw 50 USDC.............");
+        console.log("USDC balance of USER2", token.balanceOf(USER2));
+        console.log("Shares of USER2", vault.balanceOf(USER2));
+        console.log(
+            "Atoken balance of Vault",
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
+        );
+
+        vault.withdraw(shares1, USER2, USER2);
+
+        console.log(".............after USER2 withdraw 50 USDC.............");
+        console.log("USDC balance of USER2", token.balanceOf(USER2));
+        console.log("Shares of USER2", vault.balanceOf(USER2));
+        console.log(
+            "Atoken balance of Vault",
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
+        );
+        assertEq(vault.balanceOf(USER2), 0, "SHARES ERROR: testWithdraw");
+        assertLe(token.balanceOf(USER2), shares1, "USDC ERROR: testWithdraw");
+        assertEq(
+            IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault)),
+            0,
+            "ATOKEN ERROR: testWithdraw"
+        );
         vm.stopPrank();
     }
 }

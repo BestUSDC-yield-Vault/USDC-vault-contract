@@ -11,7 +11,8 @@ import "./LendingManager.sol";
 /**
  * @title Vault
  * @author Bhumi Sadariya
- * @dev A vault contract that allows users to deposit asset(USDC) and earn best yield from multiple lending protocols.
+ * @notice A vault contract that optimizes yield by interacting with multiple lending protocols.
+ * @dev This contract supports deposits of USDC and rebalances between Aave, Seamless, ExtraFi, and Moonwell protocols to maximize yield.
  */
 contract Vault is ERC4626, LendingManager, Ownable {
     using Math for uint256;
@@ -26,30 +27,31 @@ contract Vault is ERC4626, LendingManager, Ownable {
     }
     Protocol public currentProtocol = Protocol.Aave;
 
-    // Addresses of the lending pools
+    // Lending pool addresses for various protocols
     address public lendingPoolAave;
     address public lendingPoolSeamless;
     address public lendingPoolExtraFi;
     address public lendingPoolMoonwell;
 
-    // Underlying asset and other configuration variables
-    IERC20 public underlyingAsset;
+    // Underlying asset and other configuration parameters
+    IERC20 public immutable underlyingAsset;
     uint256 public usdcBalance;
-    uint32 public stakeDuration;
+    uint32 public immutable stakeDuration;
     uint16 public referralCode;
-
-    event check(uint256 amount, uint256 user, uint256 vault);
-    event Rebalance(Protocol _protocol, uint256 depositedAssets);
 
     // Mapping to keep track of staking times
     mapping(address lender => uint32 epoch) public stakeTimeEpochMapping;
 
+    event check(uint256 amount, uint256 user, uint256 vault);
+    event Rebalance(Protocol _protocol, uint256 depositedAssets);
+
     /**
-     * @dev Constructor to initialize the vault.
-     * @param _asset The underlying asset of the vault.
-     * @param _duration The staking duration.
-     * @param _lendingPoolAave  The address of the Aave lending pool.
+     * @param _asset The underlying asset of the vault (USDC).
+     * @param _duration The duration after which users can withdraw their assets.
+     * @param _lendingPoolAave The address of the Aave lending pool.
      * @param _lendingPoolSeamless The address of the Seamless lending pool.
+     * @param _lendingPoolExtraFi The address of the ExtraFi lending pool.
+     * @param _lendingPoolMoonwell The address of the Moonwell lending pool.
      */
     constructor(
         IERC20 _asset,
@@ -190,10 +192,12 @@ contract Vault is ERC4626, LendingManager, Ownable {
         if (assets > maxAssets) {
             revert ERC4626ExceededMaxDeposit(receiver, assets, maxAssets);
         }
+
         uint256 shares = previewDeposit(assets);
         _deposit(_msgSender(), receiver, assets, shares);
-        usdcBalance = usdcBalance + assets;
-        afterDeposit(assets);
+        usdcBalance += assets;
+        _afterDeposit(assets);
+
         stakeTimeEpochMapping[msg.sender] = uint32(block.timestamp);
         return shares;
     }
@@ -212,10 +216,12 @@ contract Vault is ERC4626, LendingManager, Ownable {
         if (shares > maxShares) {
             revert ERC4626ExceededMaxMint(receiver, shares, maxShares);
         }
+
         uint256 assets = previewMint(shares);
         _deposit(_msgSender(), receiver, assets, shares);
-        usdcBalance = usdcBalance + assets;
-        afterDeposit(assets);
+        usdcBalance += assets;
+
+        _afterDeposit(assets);
         stakeTimeEpochMapping[msg.sender] = uint32(block.timestamp);
         return assets;
     }
@@ -224,7 +230,7 @@ contract Vault is ERC4626, LendingManager, Ownable {
      * @dev Internal function to handle post-deposit actions.
      * @param _amount The amount deposited.
      */
-    function afterDeposit(uint256 _amount) internal virtual nonZero(_amount) {
+    function _afterDeposit(uint256 _amount) internal nonZero(_amount) {
         if (currentProtocol == Protocol.Aave) {
             depositToLendingPool(_amount, address(this), lendingPoolAave);
         } else if (currentProtocol == Protocol.Seamless) {
@@ -273,9 +279,11 @@ contract Vault is ERC4626, LendingManager, Ownable {
         if (msg.sender != owner) {
             _spendAllowance(owner, msg.sender, shares);
         }
-        usdcBalance = usdcBalance - assets;
+
+        usdcBalance -= assets;
         _burn(owner, shares);
-        uint256 amountWithdrawn = withdrawFromLendingPool(
+
+        uint256 amountWithdrawn = _withdrawFromLendingPool(
             aTokensToWithdraw,
             receiver
         );
@@ -316,9 +324,11 @@ contract Vault is ERC4626, LendingManager, Ownable {
         if (msg.sender != owner) {
             _spendAllowance(owner, msg.sender, shares);
         }
-        usdcBalance = usdcBalance - assets;
+
+        usdcBalance -= assets;
         _burn(owner, shares);
-        uint256 amountWithdrawn = withdrawFromLendingPool(
+
+        uint256 amountWithdrawn = _withdrawFromLendingPool(
             aTokensToWithdraw,
             receiver
         );
@@ -331,13 +341,12 @@ contract Vault is ERC4626, LendingManager, Ownable {
      * @dev Internal function to handle withdrawal from the lending pool.
      * @param _amount The amount to withdraw.
      * @param _receiver The address receiving the withdrawn assets.
-     * @return The amount withdrawn.
+     * @return amountWithdrawn The amount withdrawn.
      */
-    function withdrawFromLendingPool(
+    function _withdrawFromLendingPool(
         uint256 _amount,
         address _receiver
-    ) internal virtual nonZero(_amount) returns (uint256) {
-        uint256 amountWithdrawn;
+    ) internal nonZero(_amount) returns (uint256 amountWithdrawn) {
         if (currentProtocol == Protocol.Aave) {
             amountWithdrawn = withdrawFromLendingPool(
                 _amount,
@@ -363,17 +372,17 @@ contract Vault is ERC4626, LendingManager, Ownable {
                 // _receiver,
                 lendingPoolMoonwell
             );
-            amountWithdrawn = IERC20(usdc).balanceOf(address(this));
+            amountWithdrawn = IERC20(underlyingAsset).balanceOf(address(this));
             if (_receiver != address(this)) {
-                IERC20(usdc).transfer(
+                IERC20(underlyingAsset).transfer(
                     _receiver,
-                    IERC20(usdc).balanceOf(address(this))
+                    IERC20(underlyingAsset).balanceOf(address(this))
                 );
             }
             emit check(
                 amountWithdrawn,
-                IERC20(usdc).balanceOf(_receiver),
-                IERC20(usdc).balanceOf(address(this))
+                IERC20(underlyingAsset).balanceOf(_receiver),
+                IERC20(underlyingAsset).balanceOf(address(this))
             );
         }
         return amountWithdrawn;
@@ -384,40 +393,44 @@ contract Vault is ERC4626, LendingManager, Ownable {
      * @return The address of the aToken.
      */
     function getCurrentProtocolAtoken() public view returns (address) {
-        address aToken;
         if (currentProtocol == Protocol.Aave) {
-            // aToken = 0x4e65fE4DbA92790696d040ac24Aa414708F5c0AB;
-            aToken = getATokenAddress(lendingPoolAave);
+            return getATokenAddress(lendingPoolAave);
         } else if (currentProtocol == Protocol.Seamless) {
-            aToken = getATokenAddress(lendingPoolSeamless);
+            return getATokenAddress(lendingPoolSeamless);
         } else if (currentProtocol == Protocol.ExtraFi) {
-            aToken = getATokenAddressOfExtraFi(25, lendingPoolExtraFi);
+            return getATokenAddressOfExtraFi(25, lendingPoolExtraFi);
         } else if (currentProtocol == Protocol.Moonwell) {
-            aToken = lendingPoolMoonwell;
+            return lendingPoolMoonwell;
         }
-        return aToken;
+        revert("Invalid protocol");
     }
 
     function setProtocol(Protocol _protocol) public {
         currentProtocol = _protocol;
     }
 
-    function rebalance(Protocol _protocol) public onlyOwner {
+    /*//////////////////////////////////////////////////////////////
+                            REBALANCE FUNCTION
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @notice Rebalances the vault to a different protocol.
+     * @param _protocol The protocol to which funds should be rebalanced.
+     */
+    function rebalance(Protocol _protocol) external onlyOwner {
         require(
             _protocol != currentProtocol,
             "Vault: Already using the selected protocol"
         );
 
         // Get the address of the aToken or equivalent token for the current protocol
-        address currentAToken = getCurrentProtocolAtoken();
-        uint256 balanceToRebalance = IERC20(currentAToken).balanceOf(
-            address(this)
-        );
+        uint256 balanceToRebalance = IERC20(getCurrentProtocolAtoken())
+            .balanceOf(address(this));
 
         require(balanceToRebalance > 0, "Vault: No assets to rebalance");
 
         // Withdraw all assets from the current protocol
-        withdrawFromLendingPool(balanceToRebalance, address(this));
+        _withdrawFromLendingPool(balanceToRebalance, address(this));
 
         uint256 assetsToDeposit = IERC20(address(underlyingAsset)).balanceOf(
             address(this)
@@ -429,9 +442,65 @@ contract Vault is ERC4626, LendingManager, Ownable {
         currentProtocol = _protocol;
 
         // Use the afterDeposit function to deposit the assets into the new protocol
-        afterDeposit(assetsToDeposit);
+        _afterDeposit(assetsToDeposit);
 
         // Emit an event for transparency (optional)
         emit Rebalance(_protocol, assetsToDeposit);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                              ADMIN FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @notice Updates the referral code for the Aave protocol.
+     * @param _referralCode The new referral code.
+     */
+    function updateReferralCode(uint16 _referralCode) external onlyOwner {
+        referralCode = _referralCode;
+    }
+
+    /**
+     * @notice Updates the lending pool addresses for the specified protocol.
+     * @param protocol The protocol whose lending pool address should be updated.
+     * @param newAddress The new address for the lending pool.
+     */
+    function updateLendingPoolAddress(
+        Protocol protocol,
+        address newAddress
+    ) external onlyOwner {
+        if (protocol == Protocol.Aave) {
+            lendingPoolAave = newAddress;
+        } else if (protocol == Protocol.Seamless) {
+            lendingPoolSeamless = newAddress;
+        } else if (protocol == Protocol.ExtraFi) {
+            lendingPoolExtraFi = newAddress;
+        } else if (protocol == Protocol.Moonwell) {
+            lendingPoolMoonwell = newAddress;
+        } else {
+            revert("Invalid protocol");
+        }
+    }
+
+    /**
+     * @notice Emergency function to withdraw all funds from the current protocol.
+     * @param _receiver The address to receive the funds.Can
+     */
+    function emergencyWithdraw(address _receiver) external onlyOwner {
+        uint256 aTokenBalance = IERC20(getCurrentProtocolAtoken()).balanceOf(
+            address(this)
+        );
+        _withdrawFromLendingPool(aTokenBalance, _receiver);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                              FALLBACK FUNCTION
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @notice Fallback function to handle unexpected ether sent to the contract.
+     */
+    receive() external payable {
+        revert("Vault: Cannot accept Ether");
     }
 }
