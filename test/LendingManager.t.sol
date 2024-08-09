@@ -257,7 +257,8 @@ contract LendingManagerTest is Test {
 
         lendingManager.depositToExtraFi(
             RESERVE_ID,
-            100000000,
+            amount,
+            address(lendingManager),
             LENDING_POOL_EXTRAFI
         );
 
@@ -407,6 +408,7 @@ contract LendingManagerTest is Test {
             moonwellExchangeRate;
         lendingManager.withdrawFromMoonWell(
             atokenAmount,
+            // USER,
             LENDING_POOL_MOONWELL
         );
 
@@ -459,6 +461,7 @@ contract LendingManagerTest is Test {
         );
         lendingManager.withdrawFromMoonWell(
             amountToWithdraw,
+            // USER,
             LENDING_POOL_MOONWELL
         );
         console.log(

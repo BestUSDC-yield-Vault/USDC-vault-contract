@@ -5,6 +5,7 @@ pragma solidity ^0.8.21;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "./LendingManager.sol";
 
 /**
@@ -12,13 +13,14 @@ import "./LendingManager.sol";
  * @author Bhumi Sadariya
  * @dev A vault contract that allows users to deposit asset(USDC) and earn best yield from multiple lending protocols.
  */
-contract Vault is ERC4626, LendingManager {
+contract Vault is ERC4626, LendingManager, Ownable {
     using Math for uint256;
 
     // Enum to represent different protocols
     enum Protocol {
         Aave,
-        Extrafi,
+        ExtraFi, // reserveID 25
+        ExtraFi2, // reserveId ?
         Moonwell,
         Seamless
     }
@@ -27,11 +29,16 @@ contract Vault is ERC4626, LendingManager {
     // Addresses of the lending pools
     address public lendingPoolAave;
     address public lendingPoolSeamless;
+    address public lendingPoolExtraFi;
+    address public lendingPoolMoonwell;
 
     // Underlying asset and other configuration variables
     IERC20 public underlyingAsset;
+    uint256 public usdcBalance;
     uint32 public stakeDuration;
     uint16 public referralCode;
+
+    event check(uint256 amount, uint256 user, uint256 vault);
 
     // Mapping to keep track of staking times
     mapping(address lender => uint32 epoch) public stakeTimeEpochMapping;
@@ -47,8 +54,11 @@ contract Vault is ERC4626, LendingManager {
         IERC20 _asset,
         uint32 _duration,
         address _lendingPoolAave,
-        address _lendingPoolSeamless
+        address _lendingPoolSeamless,
+        address _lendingPoolExtraFi,
+        address _lendingPoolMoonwell
     )
+        Ownable(msg.sender)
         ERC4626(_asset)
         ERC20("Vault Token", "vFFI")
         LendingManager(address(_asset))
@@ -57,6 +67,8 @@ contract Vault is ERC4626, LendingManager {
         underlyingAsset = IERC20(_asset);
         lendingPoolAave = _lendingPoolAave;
         lendingPoolSeamless = _lendingPoolSeamless;
+        lendingPoolExtraFi = _lendingPoolExtraFi;
+        lendingPoolMoonwell = _lendingPoolMoonwell;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -139,7 +151,7 @@ contract Vault is ERC4626, LendingManager {
         return
             assets.mulDiv(
                 totalSupply() + 10 ** _decimalsOffset(),
-                IERC20(getCurrentProtocolAtoken()).balanceOf(address(this)) + 1,
+                usdcBalance + 1,
                 rounding
             );
     }
@@ -153,7 +165,7 @@ contract Vault is ERC4626, LendingManager {
     ) internal view virtual override returns (uint256) {
         return
             shares.mulDiv(
-                IERC20(getCurrentProtocolAtoken()).balanceOf(address(this)) + 1,
+                usdcBalance + 1,
                 totalSupply() + 10 ** _decimalsOffset(),
                 rounding
             );
@@ -179,6 +191,7 @@ contract Vault is ERC4626, LendingManager {
         }
         uint256 shares = previewDeposit(assets);
         _deposit(_msgSender(), receiver, assets, shares);
+        usdcBalance = usdcBalance + assets;
         afterDeposit(assets);
         stakeTimeEpochMapping[msg.sender] = uint32(block.timestamp);
         return shares;
@@ -200,6 +213,7 @@ contract Vault is ERC4626, LendingManager {
         }
         uint256 assets = previewMint(shares);
         _deposit(_msgSender(), receiver, assets, shares);
+        usdcBalance = usdcBalance + assets;
         afterDeposit(assets);
         stakeTimeEpochMapping[msg.sender] = uint32(block.timestamp);
         return assets;
@@ -214,6 +228,10 @@ contract Vault is ERC4626, LendingManager {
             depositToLendingPool(_amount, address(this), lendingPoolAave);
         } else if (currentProtocol == Protocol.Seamless) {
             depositToLendingPool(_amount, address(this), lendingPoolSeamless);
+        } else if (currentProtocol == Protocol.ExtraFi) {
+            depositToExtraFi(25, _amount, address(this), lendingPoolExtraFi);
+        } else if (currentProtocol == Protocol.Moonwell) {
+            depositToMoonWell(_amount, lendingPoolMoonwell);
         }
     }
 
@@ -254,7 +272,7 @@ contract Vault is ERC4626, LendingManager {
         if (msg.sender != owner) {
             _spendAllowance(owner, msg.sender, shares);
         }
-
+        usdcBalance = usdcBalance - assets;
         _burn(owner, shares);
         uint256 amountWithdrawn = withdrawFromLendingPool(
             aTokensToWithdraw,
@@ -297,7 +315,7 @@ contract Vault is ERC4626, LendingManager {
         if (msg.sender != owner) {
             _spendAllowance(owner, msg.sender, shares);
         }
-
+        usdcBalance = usdcBalance - assets;
         _burn(owner, shares);
         uint256 amountWithdrawn = withdrawFromLendingPool(
             aTokensToWithdraw,
@@ -331,6 +349,29 @@ contract Vault is ERC4626, LendingManager {
                 _receiver,
                 lendingPoolSeamless
             );
+        } else if (currentProtocol == Protocol.ExtraFi) {
+            amountWithdrawn = withdrawFromExtraFi(
+                _amount,
+                _receiver,
+                25,
+                lendingPoolExtraFi
+            );
+        } else if (currentProtocol == Protocol.Moonwell) {
+            withdrawFromMoonWell(
+                _amount,
+                // _receiver,
+                lendingPoolMoonwell
+            );
+            amountWithdrawn = IERC20(usdc).balanceOf(address(this));
+            IERC20(usdc).transfer(
+                _receiver,
+                IERC20(usdc).balanceOf(address(this))
+            );
+            emit check(
+                amountWithdrawn,
+                IERC20(usdc).balanceOf(_receiver),
+                IERC20(usdc).balanceOf(address(this))
+            );
         }
         return amountWithdrawn;
     }
@@ -346,7 +387,15 @@ contract Vault is ERC4626, LendingManager {
             aToken = getATokenAddress(lendingPoolAave);
         } else if (currentProtocol == Protocol.Seamless) {
             aToken = getATokenAddress(lendingPoolSeamless);
+        } else if (currentProtocol == Protocol.ExtraFi) {
+            aToken = getATokenAddressOfExtraFi(25, lendingPoolExtraFi);
+        } else if (currentProtocol == Protocol.Moonwell) {
+            aToken = lendingPoolMoonwell;
         }
         return aToken;
+    }
+
+    function setProtocol(Protocol _protocol) public {
+        currentProtocol = _protocol;
     }
 }

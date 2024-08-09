@@ -31,7 +31,7 @@ contract LendingManager {
         address _lendingPool
     ) public {
         IPool pool = IPool(_lendingPool);
-        IERC20(usdc).transferFrom(msg.sender, address(this), _amount); // to test this contract individually uncomment it.
+        // IERC20(usdc).transferFrom(msg.sender, address(this), _amount); // to test this contract individually uncomment it.
         IERC20(usdc).approve(address(pool), _amount);
         pool.deposit(usdc, _amount, _onBehalfOf, 0);
     }
@@ -45,12 +45,13 @@ contract LendingManager {
     function depositToExtraFi(
         uint256 _reserveId,
         uint256 _amount,
+        address _onBehalfOf,
         address _lendingPool
     ) public {
         ILendingPool pool = ILendingPool(_lendingPool);
-        IERC20(usdc).transferFrom(msg.sender, address(this), _amount);
+        // IERC20(usdc).transferFrom(msg.sender, address(this), _amount);
         IERC20(usdc).approve(address(pool), _amount);
-        pool.deposit(_reserveId, _amount, address(this), 0);
+        pool.deposit(_reserveId, _amount, _onBehalfOf, 0);
     }
 
     /**
@@ -60,7 +61,7 @@ contract LendingManager {
      */
     function depositToMoonWell(uint256 _amount, address _lendingPool) public {
         IMToken pool = IMToken(_lendingPool);
-        IERC20(usdc).transferFrom(msg.sender, address(this), _amount);
+        // IERC20(usdc).transferFrom(msg.sender, address(this), _amount);
         IERC20(usdc).approve(address(pool), _amount);
         pool.mint(_amount);
     }
@@ -112,10 +113,12 @@ contract LendingManager {
      */
     function withdrawFromMoonWell(
         uint256 _redeemTokens,
+        // address _to,
         address _lendingPool
-    ) external returns (uint256) {
+    ) public returns (uint256) {
         IMToken pool = IMToken(_lendingPool);
         return pool.redeem(_redeemTokens); //can be static first and last value
+        // IERC20(usdc).transfer(_to, withdrawAmount);
     }
 
     /**
