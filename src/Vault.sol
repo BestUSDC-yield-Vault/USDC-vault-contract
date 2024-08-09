@@ -39,6 +39,7 @@ contract Vault is ERC4626, LendingManager, Ownable {
     uint16 public referralCode;
 
     event check(uint256 amount, uint256 user, uint256 vault);
+    event Rebalance(Protocol _protocol, uint256 depositedAssets);
 
     // Mapping to keep track of staking times
     mapping(address lender => uint32 epoch) public stakeTimeEpochMapping;
@@ -363,10 +364,12 @@ contract Vault is ERC4626, LendingManager, Ownable {
                 lendingPoolMoonwell
             );
             amountWithdrawn = IERC20(usdc).balanceOf(address(this));
-            IERC20(usdc).transfer(
-                _receiver,
-                IERC20(usdc).balanceOf(address(this))
-            );
+            if (_receiver != address(this)) {
+                IERC20(usdc).transfer(
+                    _receiver,
+                    IERC20(usdc).balanceOf(address(this))
+                );
+            }
             emit check(
                 amountWithdrawn,
                 IERC20(usdc).balanceOf(_receiver),
@@ -397,5 +400,38 @@ contract Vault is ERC4626, LendingManager, Ownable {
 
     function setProtocol(Protocol _protocol) public {
         currentProtocol = _protocol;
+    }
+
+    function rebalance(Protocol _protocol) public onlyOwner {
+        require(
+            _protocol != currentProtocol,
+            "Vault: Already using the selected protocol"
+        );
+
+        // Get the address of the aToken or equivalent token for the current protocol
+        address currentAToken = getCurrentProtocolAtoken();
+        uint256 balanceToRebalance = IERC20(currentAToken).balanceOf(
+            address(this)
+        );
+
+        require(balanceToRebalance > 0, "Vault: No assets to rebalance");
+
+        // Withdraw all assets from the current protocol
+        withdrawFromLendingPool(balanceToRebalance, address(this));
+
+        uint256 assetsToDeposit = IERC20(address(underlyingAsset)).balanceOf(
+            address(this)
+        );
+
+        require(assetsToDeposit > 0, "Vault: No assets to deposit");
+
+        // Set the current protocol to the new protocol before depositing
+        currentProtocol = _protocol;
+
+        // Use the afterDeposit function to deposit the assets into the new protocol
+        afterDeposit(assetsToDeposit);
+
+        // Emit an event for transparency (optional)
+        emit Rebalance(_protocol, assetsToDeposit);
     }
 }
