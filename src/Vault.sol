@@ -21,7 +21,7 @@ contract Vault is ERC4626, LendingManager, Ownable {
     enum Protocol {
         Aave,
         ExtraFi, // reserveID 25
-        ExtraFi2, // reserveId ?
+        ExtraFi2, // reserveId 24
         Moonwell,
         Seamless
     }
@@ -38,6 +38,7 @@ contract Vault is ERC4626, LendingManager, Ownable {
     uint256 public usdcBalance;
     uint32 public immutable stakeDuration;
     uint16 public referralCode;
+    uint256 public constant MAX_USDC_CAP = 5_000_000 * 1e6; // 5 million USDC
 
     // Mapping to keep track of staking times
     mapping(address lender => uint32 epoch) public stakeTimeEpochMapping;
@@ -188,6 +189,10 @@ contract Vault is ERC4626, LendingManager, Ownable {
         uint256 assets,
         address receiver
     ) public virtual override nonZero(assets) returns (uint256) {
+        require(
+            usdcBalance + assets <= MAX_USDC_CAP,
+            "Vault: Deposit exceeds maximum USDC cap"
+        );
         uint256 maxAssets = maxDeposit(receiver);
         if (assets > maxAssets) {
             revert ERC4626ExceededMaxDeposit(receiver, assets, maxAssets);
@@ -212,12 +217,17 @@ contract Vault is ERC4626, LendingManager, Ownable {
         uint256 shares,
         address receiver
     ) public virtual override nonZero(shares) returns (uint256) {
+        uint256 assets = previewMint(shares);
+        require(
+            usdcBalance + assets <= MAX_USDC_CAP,
+            "Vault: Mint exceeds maximum USDC cap"
+        );
+
         uint256 maxShares = maxMint(receiver);
         if (shares > maxShares) {
             revert ERC4626ExceededMaxMint(receiver, shares, maxShares);
         }
 
-        uint256 assets = previewMint(shares);
         _deposit(_msgSender(), receiver, assets, shares);
         usdcBalance += assets;
 
@@ -237,6 +247,8 @@ contract Vault is ERC4626, LendingManager, Ownable {
             depositToLendingPool(_amount, address(this), lendingPoolSeamless);
         } else if (currentProtocol == Protocol.ExtraFi) {
             depositToExtraFi(25, _amount, address(this), lendingPoolExtraFi);
+        } else if (currentProtocol == Protocol.ExtraFi2) {
+            depositToExtraFi(24, _amount, address(this), lendingPoolExtraFi);
         } else if (currentProtocol == Protocol.Moonwell) {
             depositToMoonWell(_amount, lendingPoolMoonwell);
         }
@@ -366,6 +378,13 @@ contract Vault is ERC4626, LendingManager, Ownable {
                 25,
                 lendingPoolExtraFi
             );
+        } else if (currentProtocol == Protocol.ExtraFi2) {
+            amountWithdrawn = withdrawFromExtraFi(
+                _amount,
+                _receiver,
+                24,
+                lendingPoolExtraFi
+            );
         } else if (currentProtocol == Protocol.Moonwell) {
             withdrawFromMoonWell(
                 _amount,
@@ -399,6 +418,8 @@ contract Vault is ERC4626, LendingManager, Ownable {
             return getATokenAddress(lendingPoolSeamless);
         } else if (currentProtocol == Protocol.ExtraFi) {
             return getATokenAddressOfExtraFi(25, lendingPoolExtraFi);
+        } else if (currentProtocol == Protocol.ExtraFi2) {
+            return getATokenAddressOfExtraFi(24, lendingPoolExtraFi);
         } else if (currentProtocol == Protocol.Moonwell) {
             return lendingPoolMoonwell;
         }

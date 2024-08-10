@@ -197,7 +197,7 @@ contract VaultTest is Test {
             shares + 80000000,
             "SHARES ERROR: testMint"
         );
-        assertLe(
+        assertGe(
             IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault)),
             shares + 580000000,
             "ATOKEN ERROR: testMint"
