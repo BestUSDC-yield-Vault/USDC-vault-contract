@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./interfaces/aave/IPool.sol";
 import "./interfaces/extrafi/ILendingPool.sol";
 import "./interfaces/moonwell/IMtoken.sol";
+import "./interfaces/uniswap/ISwapRouter.sol";
 
 /**
  * @title LendingManager

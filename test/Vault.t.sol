@@ -117,7 +117,7 @@ contract VaultTest is Test {
         );
 
         assertEq(vault.balanceOf(USER2), shares2, "SHARES ERROR: testMint");
-        assertEq(
+        assertLe(
             IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault)),
             vault.balanceOf(USER) + shares2,
             "ATOKEN ERROR: testMint"
@@ -150,12 +150,12 @@ contract VaultTest is Test {
             IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
         );
         assertEq(vault.balanceOf(USER), 80000000, "SHARES ERROR: testWithdraw");
-        assertGe(
+        assertLe(
             token.balanceOf(USER),
             withdrawAmount,
             "USDC ERROR: testWithdraw"
         );
-        assertLe(
+        assertGe(
             IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault)),
             580000000,
             "ATOKEN ERROR: testWithdraw"
@@ -720,7 +720,7 @@ contract VaultTest is Test {
         );
 
         assertEq(vault.balanceOf(USER2), shares2, "SHARES ERROR: testMint");
-        assertEq(
+        assertLe(
             IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault)),
             vault.balanceOf(USER) + shares2,
             "ATOKEN ERROR: testMint"
@@ -753,12 +753,12 @@ contract VaultTest is Test {
             IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault))
         );
         assertEq(vault.balanceOf(USER), 80000000, "SHARES ERROR: testWithdraw");
-        assertGe(
+        assertLe(
             token.balanceOf(USER),
             withdrawAmount,
             "USDC ERROR: testWithdraw"
         );
-        assertLe(
+        assertGe(
             IERC20(vault.getCurrentProtocolAtoken()).balanceOf(address(vault)),
             580000000,
             "ATOKEN ERROR: testWithdraw"

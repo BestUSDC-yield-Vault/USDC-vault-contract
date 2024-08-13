@@ -64,7 +64,7 @@ contract Vault is ERC4626, LendingManager, Ownable {
     )
         Ownable(msg.sender)
         ERC4626(_asset)
-        ERC20("Vault Token", "vFFI")
+        ERC20("BESTUSDC Yield Vault", "vFFI")
         LendingManager(address(_asset))
     {
         stakeDuration = _duration;
@@ -203,7 +203,7 @@ contract Vault is ERC4626, LendingManager, Ownable {
         usdcBalance += assets;
         _afterDeposit(assets);
 
-        stakeTimeEpochMapping[msg.sender] = uint32(block.timestamp);
+        // stakeTimeEpochMapping[msg.sender] = uint32(block.timestamp);
         return shares;
     }
 
@@ -232,7 +232,7 @@ contract Vault is ERC4626, LendingManager, Ownable {
         usdcBalance += assets;
 
         _afterDeposit(assets);
-        stakeTimeEpochMapping[msg.sender] = uint32(block.timestamp);
+        // stakeTimeEpochMapping[msg.sender] = uint32(block.timestamp);
         return assets;
     }
 
@@ -288,9 +288,9 @@ contract Vault is ERC4626, LendingManager, Ownable {
         );
         uint256 aTokensToWithdraw = (shares * aTokenBalance) / totalSupply();
 
-        if (msg.sender != owner) {
-            _spendAllowance(owner, msg.sender, shares);
-        }
+        // if (msg.sender != owner) {
+        //     _spendAllowance(owner, msg.sender, shares);
+        // }
 
         usdcBalance -= assets;
         _burn(owner, shares);
@@ -333,20 +333,20 @@ contract Vault is ERC4626, LendingManager, Ownable {
         );
         uint256 aTokensToWithdraw = (shares * aTokenBalance) / totalSupply();
 
-        if (msg.sender != owner) {
-            _spendAllowance(owner, msg.sender, shares);
-        }
+        // if (msg.sender != owner) {
+        //     _spendAllowance(owner, msg.sender, shares);
+        // }
 
         usdcBalance -= assets;
-        _burn(owner, shares);
 
         uint256 amountWithdrawn = _withdrawFromLendingPool(
             aTokensToWithdraw,
             receiver
         );
+        _burn(owner, shares);
         emit Withdraw(msg.sender, receiver, owner, amountWithdrawn, shares);
 
-        return assets;
+        return amountWithdrawn;
     }
 
     /**
@@ -479,39 +479,6 @@ contract Vault is ERC4626, LendingManager, Ownable {
      */
     function updateReferralCode(uint16 _referralCode) external onlyOwner {
         referralCode = _referralCode;
-    }
-
-    /**
-     * @notice Updates the lending pool addresses for the specified protocol.
-     * @param protocol The protocol whose lending pool address should be updated.
-     * @param newAddress The new address for the lending pool.
-     */
-    function updateLendingPoolAddress(
-        Protocol protocol,
-        address newAddress
-    ) external onlyOwner {
-        if (protocol == Protocol.Aave) {
-            lendingPoolAave = newAddress;
-        } else if (protocol == Protocol.Seamless) {
-            lendingPoolSeamless = newAddress;
-        } else if (protocol == Protocol.ExtraFi) {
-            lendingPoolExtraFi = newAddress;
-        } else if (protocol == Protocol.Moonwell) {
-            lendingPoolMoonwell = newAddress;
-        } else {
-            revert("Invalid protocol");
-        }
-    }
-
-    /**
-     * @notice Emergency function to withdraw all funds from the current protocol.
-     * @param _receiver The address to receive the funds.Can
-     */
-    function emergencyWithdraw(address _receiver) external onlyOwner {
-        uint256 aTokenBalance = IERC20(getCurrentProtocolAtoken()).balanceOf(
-            address(this)
-        );
-        _withdrawFromLendingPool(aTokenBalance, _receiver);
     }
 
     /*//////////////////////////////////////////////////////////////
