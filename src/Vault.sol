@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./LendingManager.sol";
 
 /**
@@ -14,7 +15,7 @@ import "./LendingManager.sol";
  * @notice A vault contract that optimizes yield by interacting with multiple lending protocols.
  * @dev This contract supports deposits of USDC and rebalances between Aave, Seamless, ExtraFi, and Moonwell protocols to maximize yield.
  */
-contract Vault is ERC4626, LendingManager, Ownable {
+contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard {
     using Math for uint256;
 
     // Enum to represent different protocols
@@ -60,6 +61,7 @@ contract Vault is ERC4626, LendingManager, Ownable {
         address _lendingPoolMoonwell
     )
         Ownable(msg.sender)
+        ReentrancyGuard()
         ERC4626(_asset)
         ERC20("BESTUSDC Yield Vault", "vFFI")
         LendingManager(address(_asset))
@@ -159,7 +161,7 @@ contract Vault is ERC4626, LendingManager, Ownable {
     function deposit(
         uint256 assets,
         address receiver
-    ) public virtual override nonZero(assets) returns (uint256) {
+    ) public virtual override nonZero(assets) nonReentrant returns (uint256) {
         require(
             usdcBalance + assets <= MAX_USDC_CAP,
             "Vault: Deposit exceeds maximum USDC cap"
@@ -436,6 +438,17 @@ contract Vault is ERC4626, LendingManager, Ownable {
      */
     function updateReferralCode(uint16 _referralCode) external onlyOwner {
         referralCode = _referralCode;
+    }
+
+    /**
+     * @dev Rescues random funds stuck that the strat can't handle.
+     * @param _token address of the token to rescue.
+     */
+    function inCaseTokensGetStuck(address _token) external onlyOwner {
+        require(_token != address(underlyingAsset), "!token");
+
+        uint256 amount = IERC20(_token).balanceOf(address(this));
+        IERC20(_token).transfer(msg.sender, amount);
     }
 
     /*//////////////////////////////////////////////////////////////
