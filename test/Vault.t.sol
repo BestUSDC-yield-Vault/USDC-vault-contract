@@ -36,7 +36,6 @@ contract VaultTest is Test {
         token = IERC20(TOKEN);
         vault = new Vault(
             token,
-            0,
             LENDING_POOL_AAVE,
             LENDING_POOL_SEAMLESS,
             LENDING_POOL_EXTRAFI,

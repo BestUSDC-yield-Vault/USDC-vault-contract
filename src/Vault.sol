@@ -36,7 +36,6 @@ contract Vault is ERC4626, LendingManager, Ownable {
     // Underlying asset and other configuration parameters
     IERC20 public immutable underlyingAsset;
     uint256 public usdcBalance;
-    uint32 public immutable stakeDuration;
     uint16 public referralCode;
     uint256 public constant MAX_USDC_CAP = 5_000_000 * 1e6; // 5 million USDC
 
@@ -48,7 +47,6 @@ contract Vault is ERC4626, LendingManager, Ownable {
 
     /**
      * @param _asset The underlying asset of the vault (USDC).
-     * @param _duration The duration after which users can withdraw their assets.
      * @param _lendingPoolAave The address of the Aave lending pool.
      * @param _lendingPoolSeamless The address of the Seamless lending pool.
      * @param _lendingPoolExtraFi The address of the ExtraFi lending pool.
@@ -56,7 +54,6 @@ contract Vault is ERC4626, LendingManager, Ownable {
      */
     constructor(
         IERC20 _asset,
-        uint32 _duration,
         address _lendingPoolAave,
         address _lendingPoolSeamless,
         address _lendingPoolExtraFi,
@@ -67,7 +64,6 @@ contract Vault is ERC4626, LendingManager, Ownable {
         ERC20("BESTUSDC Yield Vault", "vFFI")
         LendingManager(address(_asset))
     {
-        stakeDuration = _duration;
         underlyingAsset = IERC20(_asset);
         lendingPoolAave = _lendingPoolAave;
         lendingPoolSeamless = _lendingPoolSeamless;
@@ -86,31 +82,6 @@ contract Vault is ERC4626, LendingManager, Ownable {
     modifier nonZero(uint256 _value) {
         require(_value != 0, "Value must be greater than zero");
         _;
-    }
-
-    /**
-     * @dev Ensures the owner can withdraw their funds.
-     * @param _owner The address of the owner.
-     */
-    modifier canWithdraw(address _owner) {
-        require(
-            getWithdrawEpoch(_owner) <= uint32(block.timestamp),
-            "Not eligible for withdrawal yet"
-        );
-        _;
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                          VIEW FUNCTIONS
-    //////////////////////////////////////////////////////////////*/
-
-    /**
-     * @dev Gets the withdrawal epoch for a given address.
-     * @param _owner The address of the owner.
-     * @return The withdrawal epoch.
-     */
-    function getWithdrawEpoch(address _owner) public view returns (uint32) {
-        return stakeTimeEpochMapping[_owner] + stakeDuration;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -269,14 +240,7 @@ contract Vault is ERC4626, LendingManager, Ownable {
         uint256 assets,
         address receiver,
         address owner
-    )
-        public
-        virtual
-        override
-        nonZero(assets)
-        canWithdraw(owner)
-        returns (uint256)
-    {
+    ) public virtual override nonZero(assets) returns (uint256) {
         uint256 maxAssets = maxWithdraw(owner);
         if (assets > maxAssets) {
             revert ERC4626ExceededMaxWithdraw(owner, assets, maxAssets);
@@ -314,14 +278,7 @@ contract Vault is ERC4626, LendingManager, Ownable {
         uint256 shares,
         address receiver,
         address owner
-    )
-        public
-        virtual
-        override
-        nonZero(shares)
-        canWithdraw(owner)
-        returns (uint256)
-    {
+    ) public virtual override nonZero(shares) returns (uint256) {
         uint256 maxShares = maxRedeem(owner);
         if (shares > maxShares) {
             revert ERC4626ExceededMaxRedeem(owner, shares, maxShares);
