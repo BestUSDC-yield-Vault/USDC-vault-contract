@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 import "./LendingManager.sol";
 
 /**
@@ -15,7 +16,7 @@ import "./LendingManager.sol";
  * @notice A vault contract that optimizes yield by interacting with multiple lending protocols.
  * @dev This contract supports deposits of USDC and rebalances between Aave, Seamless, ExtraFi, and Moonwell protocols to maximize yield.
  */
-contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard {
+contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard, Pausable {
     using Math for uint256;
 
     // Enum to represent different protocols
@@ -62,6 +63,7 @@ contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard {
     )
         Ownable(msg.sender)
         ReentrancyGuard()
+        Pausable()
         ERC4626(_asset)
         ERC20("BESTUSDC Yield Vault", "vFFI")
         LendingManager(address(_asset))
@@ -161,7 +163,15 @@ contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard {
     function deposit(
         uint256 assets,
         address receiver
-    ) public virtual override nonZero(assets) nonReentrant returns (uint256) {
+    )
+        public
+        virtual
+        override
+        nonZero(assets)
+        nonReentrant
+        whenNotPaused
+        returns (uint256)
+    {
         require(
             usdcBalance + assets <= MAX_USDC_CAP,
             "Vault: Deposit exceeds maximum USDC cap"
@@ -189,7 +199,15 @@ contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard {
     function mint(
         uint256 shares,
         address receiver
-    ) public virtual override nonZero(shares) returns (uint256) {
+    )
+        public
+        virtual
+        override
+        nonZero(shares)
+        nonReentrant
+        whenNotPaused
+        returns (uint256)
+    {
         uint256 assets = previewMint(shares);
         require(
             usdcBalance + assets <= MAX_USDC_CAP,
@@ -397,7 +415,7 @@ contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard {
      * @notice Rebalances the vault to a different protocol.
      * @param _protocol The protocol to which funds should be rebalanced.
      */
-    function rebalance(Protocol _protocol) external onlyOwner {
+    function rebalance(Protocol _protocol) external onlyOwner whenNotPaused {
         require(
             _protocol != currentProtocol,
             "Vault: Already using the selected protocol"
@@ -440,6 +458,29 @@ contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard {
         referralCode = _referralCode;
     }
 
+    /// @notice Pauses deposits and withdraws all funds from the underlying platform
+    function panic() public onlyOwner {
+        pause();
+        _withdrawFromLendingPool(
+            IERC20(getCurrentProtocolAtoken()).balanceOf(address(this)),
+            address(this)
+        );
+    }
+
+    /// @notice Pauses deposits but leaves funds still invested
+    function pause() public onlyOwner {
+        _pause();
+    }
+
+    /// @notice Unpauses deposits and reinvests any idle funds
+    function unpause() external onlyOwner {
+        _unpause();
+
+        _afterDeposit(
+            IERC20(getCurrentProtocolAtoken()).balanceOf(address(this))
+        );
+    }
+
     /**
      * @dev Rescues random funds stuck that the strat can't handle.
      * @param _token address of the token to rescue.
@@ -461,4 +502,7 @@ contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard {
     receive() external payable {
         revert("Vault: Cannot accept Ether");
     }
+
+    // TO-DO
+    // add whenNotPaused for harvest function
 }
