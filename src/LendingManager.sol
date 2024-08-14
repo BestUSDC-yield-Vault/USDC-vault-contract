@@ -32,7 +32,7 @@ contract LendingManager {
         address _lendingPool
     ) public {
         IPool pool = IPool(_lendingPool);
-        // IERC20(usdc).transferFrom(msg.sender, address(this), _amount); // to test this contract individually uncomment it.
+        IERC20(usdc).transferFrom(msg.sender, address(this), _amount); // to test this contract individually uncomment it.
         IERC20(usdc).approve(address(pool), _amount);
         pool.deposit(usdc, _amount, _onBehalfOf, 0);
     }
@@ -62,7 +62,7 @@ contract LendingManager {
      */
     function depositToMoonWell(uint256 _amount, address _lendingPool) public {
         IMToken pool = IMToken(_lendingPool);
-        // IERC20(usdc).transferFrom(msg.sender, address(this), _amount);
+        IERC20(usdc).transferFrom(msg.sender, address(this), _amount);
         IERC20(usdc).approve(address(pool), _amount);
         pool.mint(_amount);
     }

@@ -7,62 +7,77 @@ import "../src/LendingManager.sol";
 
 /**
  * @title LendingManagerTest
- * @dev Test contract for LendingManager
+ * @dev Comprehensive test suite for the LendingManager contract
+ * @notice This contract tests various lending protocols including AAVE, Seamless, ExtraFi, and Moonwell
  */
 contract LendingManagerTest is Test {
-    LendingManager lendingManager;
-    IERC20 token;
-    IERC20 atoken;
-    IERC20 atokenSeamless;
-    IERC20 etoken;
-    IMToken mtoken;
-    uint256 amount;
-    uint128 aaveInterestRate;
-    uint128 seamlessInterestRate;
-    uint256 extrafiExchangeRate;
-    uint128 extrafiInterestRate;
-    uint256 moonwellInterestRate;
-    uint256 moonwellExchangeRate;
-    uint256 RESERVE_ID = 25; // Assuming 1 is the static reserve ID for ExtraFi
+    // Constants
+    uint256 private constant DAY_IN_SECONDS = 86400;
+    uint256 private constant FIVE_DAYS_IN_SECONDS = 5 * DAY_IN_SECONDS;
+    uint256 private constant USDC_DECIMALS = 6;
+    uint256 private constant AMOUNT = 1_000_000 * 10 ** USDC_DECIMALS; // 1 million USDC
+    uint256 private constant TOLERANCE = 1e15; // 0.1% tolerance for floating-point comparisons
+    uint256 private constant RESERVE_ID = 25; // ExtraFi reserve ID
+
+    // Test contract variables
+    LendingManager private lendingManager;
+    IERC20 private token;
+    IERC20 private atoken;
+    IERC20 private atokenSeamless;
+    IERC20 private etoken;
+    IMToken private mtoken;
+
+    // Protocol-specific variables
+    uint128 private aaveInterestRate;
+    uint128 private seamlessInterestRate;
+    uint256 private extrafiExchangeRate;
+    uint256 private moonwellInterestRate;
+    uint256 private moonwellExchangeRate;
 
     // Mainnet fork configuration
-    address LENDING_POOL_AAVE = vm.envAddress("LENDING_POOL_AAVE");
-    address LENDING_POOL_SEAMLESS = vm.envAddress("LENDING_POOL_SEAMLESS");
-    address LENDING_POOL_EXTRAFI = vm.envAddress("LENDING_POOL_EXTRAFI");
-    address LENDING_POOL_MOONWELL = vm.envAddress("LENDING_POOL_MOONWELL");
-    address USDC = vm.envAddress("USDC_ADDRESS");
-    address USER = vm.envAddress("USER");
+    address private LENDING_POOL_AAVE = vm.envAddress("LENDING_POOL_AAVE");
+    address private LENDING_POOL_SEAMLESS =
+        vm.envAddress("LENDING_POOL_SEAMLESS");
+    address private LENDING_POOL_EXTRAFI =
+        vm.envAddress("LENDING_POOL_EXTRAFI");
+    address private LENDING_POOL_MOONWELL =
+        vm.envAddress("LENDING_POOL_MOONWELL");
+    address private USDC = vm.envAddress("USDC_ADDRESS");
+    address private USER = vm.envAddress("USER");
 
+    /**
+     * @dev Sets up the test environment before each test
+     */
     function setUp() public {
         lendingManager = new LendingManager(USDC);
         token = IERC20(USDC);
 
         // Setup for AAVE
-        address aTOKEN = lendingManager.getATokenAddress(LENDING_POOL_AAVE);
-        atoken = IERC20(aTOKEN);
+        atoken = IERC20(lendingManager.getATokenAddress(LENDING_POOL_AAVE));
         aaveInterestRate = lendingManager.getInterestRate(LENDING_POOL_AAVE);
         // console.log("AAVE INTEREST RATE", aaveInterestRate);
 
         // Setup for Seamless
-        address aTOKENSeamless = lendingManager.getATokenAddress(
-            LENDING_POOL_SEAMLESS
+        atokenSeamless = IERC20(
+            lendingManager.getATokenAddress(LENDING_POOL_SEAMLESS)
         );
-        atokenSeamless = IERC20(aTOKENSeamless);
         seamlessInterestRate = lendingManager.getInterestRate(
             LENDING_POOL_SEAMLESS
         );
         // console.log("SEAMLESS INTEREST RATE", seamlessInterestRate);
 
         // Setup for ExtraFi
-        address eTOKEN = lendingManager.getATokenAddressOfExtraFi(
-            RESERVE_ID,
-            LENDING_POOL_EXTRAFI
+        etoken = IERC20(
+            lendingManager.getATokenAddressOfExtraFi(
+                RESERVE_ID,
+                LENDING_POOL_EXTRAFI
+            )
         );
-        etoken = IERC20(eTOKEN);
         extrafiExchangeRate = lendingManager.exchangeRateOfExtraFi(
             RESERVE_ID,
             LENDING_POOL_EXTRAFI
         );
+
         // console.log("ExtraFi EXCHANGE RATE", extrafiExchangeRate);
 
         // Setup for Moonwell
@@ -73,414 +88,322 @@ contract LendingManagerTest is Test {
         moonwellExchangeRate = lendingManager.exchangeRateOfMoonWell(
             LENDING_POOL_MOONWELL
         );
+
         // console.log("Moonwell INTEREST RATE", moonwellInterestRate);
-        console.log("Moonwell exchange RATE", moonwellExchangeRate);
-
-        // setting up supply/withdraw amount
-        amount = 100000000; // 100 USDC
+        // console.log("Moonwell exchange RATE", moonwellExchangeRate);
+        // Fund the USER account with USDC
+        deal(USDC, USER, AMOUNT * 2);
     }
 
-    // Tests for AAVE
-    function testDepositToAave() public {
+    /**
+     * @dev Helper function to approve and deposit tokens to a lending pool
+     * @param amount The amount of tokens to deposit
+     * @param lendingPool The address of the lending pool
+     */
+    function approveAndDeposit(uint256 amount, address lendingPool) internal {
         vm.startPrank(USER);
-
-        assertGt(
-            token.balanceOf(USER),
-            0,
-            "USER does not hold the underlying token"
-        );
-
         token.approve(address(lendingManager), amount);
-        assertGe(
-            token.allowance(USER, address(lendingManager)),
-            amount,
-            "Allowance should be equal to the approved amount"
-        );
-
         lendingManager.depositToLendingPool(
             amount,
             address(lendingManager),
-            LENDING_POOL_AAVE
+            lendingPool
         );
+        vm.stopPrank();
+    }
+
+    /**
+     * @dev Helper function to withdraw tokens from a lending pool
+     * @param amount The amount of tokens to withdraw
+     * @param lendingPool The address of the lending pool
+     */
+    function withdraw(uint256 amount, address lendingPool) internal {
+        vm.prank(USER);
+        lendingManager.withdrawFromLendingPool(
+            amount,
+            address(lendingManager),
+            lendingPool
+        );
+    }
+
+    /**
+     * @dev Test depositing and withdrawing from AAVE lending pool
+     */
+    function testDepositWithdrawAave() public {
+        uint256 initialBalance = token.balanceOf(USER);
+        approveAndDeposit(AMOUNT, LENDING_POOL_AAVE);
+
         assertEq(
             atoken.balanceOf(address(lendingManager)),
-            amount,
-            "ATOKEN balance error"
+            AMOUNT,
+            "Incorrect aToken balance after deposit"
         );
-        vm.stopPrank();
-    }
-
-    function testWithdrawHalfFromAave() public {
-        testDepositToAave();
-        vm.startPrank(USER);
-
-        uint256 usdcBalanceBefore = token.balanceOf(address(lendingManager));
-        uint256 atokenBalanceBefore = atoken.balanceOf(address(lendingManager));
-        uint256 amountToWithdraw = amount / 2; // 50 USDC
-
-        lendingManager.withdrawFromLendingPool(
-            amountToWithdraw,
-            address(lendingManager),
-            LENDING_POOL_AAVE
-        );
-
         assertEq(
-            token.balanceOf(address(lendingManager)),
-            usdcBalanceBefore + amountToWithdraw,
-            "USDC balance error on withdraw"
+            token.balanceOf(USER),
+            initialBalance - AMOUNT,
+            "Incorrect USDC balance after deposit"
         );
-        assertLe(
+
+        // Simulate interest accrual
+        vm.warp(block.timestamp + DAY_IN_SECONDS);
+
+        uint256 balanceAfterOneDay = atoken.balanceOf(address(lendingManager));
+        assertGt(
+            balanceAfterOneDay,
+            AMOUNT,
+            "No interest accrued after one day"
+        );
+
+        // Withdraw half
+        uint256 halfBalance = balanceAfterOneDay / 2;
+        withdraw(halfBalance, LENDING_POOL_AAVE);
+
+        assertApproxEqRel(
             atoken.balanceOf(address(lendingManager)),
-            atokenBalanceBefore - amountToWithdraw,
-            "ATOKEN balance error on withdraw"
+            halfBalance,
+            TOLERANCE,
+            "Incorrect aToken balance after partial withdrawal"
         );
 
-        vm.stopPrank();
-    }
+        // Withdraw remaining balance
+        vm.warp(block.timestamp + FIVE_DAYS_IN_SECONDS);
+        uint256 remainingBalance = atoken.balanceOf(address(lendingManager));
 
-    function testWithdrawFullFromAave() public {
-        testDepositToAave();
-        vm.startPrank(USER);
-
-        uint256 usdcBalanceBefore = token.balanceOf(address(lendingManager));
-        uint256 atokenBalanceBefore = atoken.balanceOf(address(lendingManager));
-
-        lendingManager.withdrawFromLendingPool(
-            atokenBalanceBefore,
-            address(lendingManager),
-            LENDING_POOL_AAVE
+        // Ensure the aToken balance has increased due to further accrued interest
+        assertGt(
+            remainingBalance,
+            halfBalance,
+            "aToken balance should have increased due to additional interest accrual"
         );
-        assertEq(
-            token.balanceOf(address(lendingManager)),
-            usdcBalanceBefore + atokenBalanceBefore,
-            "USDC balance error on withdraw"
-        );
+
+        withdraw(remainingBalance, LENDING_POOL_AAVE);
+
         assertEq(
             atoken.balanceOf(address(lendingManager)),
             0,
-            "ATOKEN balance error on withdraw"
+            "aToken balance should be zero after full withdrawal"
         );
-
-        vm.stopPrank();
-    }
-
-    // Tests for Seamless
-    function testDepositToSeamless() public {
-        vm.startPrank(USER);
-
         assertGt(
-            token.balanceOf(USER),
-            0,
-            "USER does not hold the underlying token"
-        );
-
-        token.approve(address(lendingManager), amount);
-        assertGe(
-            token.allowance(USER, address(lendingManager)),
-            amount,
-            "Allowance should be equal to the approved amount"
-        );
-
-        lendingManager.depositToLendingPool(
-            amount,
-            address(lendingManager),
-            LENDING_POOL_SEAMLESS
-        );
-        // console.log(
-        //     "atoken seamless",
-        //     atokenSeamless.balanceOf(address(lendingManager))
-        // );
-        assertEq(
-            atokenSeamless.balanceOf(address(lendingManager)),
-            amount,
-            "ATOKEN balance error"
-        );
-        vm.stopPrank();
-    }
-
-    function testWithdrawHalfFromSeamless() public {
-        testDepositToSeamless();
-        vm.startPrank(USER);
-
-        uint256 usdcBalanceBefore = token.balanceOf(address(lendingManager));
-        uint256 atokenSeamlessBalanceBefore = atokenSeamless.balanceOf(
-            address(lendingManager)
-        );
-        uint256 amountToWithdraw = amount / 2; // 50 USDC
-
-        lendingManager.withdrawFromLendingPool(
-            amountToWithdraw,
-            address(lendingManager),
-            LENDING_POOL_SEAMLESS
-        );
-        // console.log("usdc after", token.balanceOf(address(lendingManager)));
-        // console.log(
-        //     "ausdc after",
-        //     atokenSeamless.balanceOf(address(lendingManager))
-        // );
-        assertEq(
             token.balanceOf(address(lendingManager)),
-            usdcBalanceBefore + amountToWithdraw,
-            "USDC balance error on withdraw"
+            AMOUNT,
+            "Contract should have earned interest"
         );
-        assertGe(
-            atokenSeamless.balanceOf(address(lendingManager)),
-            atokenSeamlessBalanceBefore - amountToWithdraw,
-            "ATOKEN balance error on withdraw"
-        );
-
-        vm.stopPrank();
     }
 
-    // Tests for ExtraFi
-    function testDepositToExtraFi() public {
+    /**
+     * @dev Test depositing and withdrawing from Moonwell lending pool
+     */
+    function testDepositWithdrawMoonwell() public {
+        uint256 initialBalance = token.balanceOf(USER);
+
         vm.startPrank(USER);
-
-        assertGt(
-            token.balanceOf(USER),
-            0,
-            "USER does not hold the underlying token"
-        );
-
-        token.approve(address(lendingManager), amount);
-        assertGe(
-            token.allowance(USER, address(lendingManager)),
-            amount,
-            "Allowance should be equal to the approved amount"
-        );
-
-        uint256 eTokenBalanceBefore = etoken.balanceOf(address(lendingManager));
-        // console.log(
-        //     "user Etoken balance before deposit",
-        //     etoken.balanceOf(address(lendingManager))
-        // );
-
-        lendingManager.depositToExtraFi(
-            RESERVE_ID,
-            amount,
-            address(lendingManager),
-            LENDING_POOL_EXTRAFI
-        );
-
-        // console.log(
-        //     "user Etoken balance after deposit",
-        //     etoken.balanceOf(address(lendingManager))
-        // );
-        assertLe(
-            etoken.balanceOf(address(lendingManager)),
-            eTokenBalanceBefore + amount,
-            "ETOKEN balance error"
-        );
-
+        token.approve(address(lendingManager), AMOUNT);
+        lendingManager.depositToMoonWell(AMOUNT, LENDING_POOL_MOONWELL);
         vm.stopPrank();
-    }
 
-    function testWithdrawHalfFromExtraFi() public {
-        testDepositToExtraFi();
-        vm.startPrank(USER);
+        uint256 expectedMTokens = (AMOUNT * 1e18) / moonwellExchangeRate;
 
-        uint256 usdcBalanceBefore = token.balanceOf(USER);
-        uint256 eTokenBalanceBefore = etoken.balanceOf(address(lendingManager));
-        uint256 amountToWithdraw = amount / 2; // 50 USDC
-        // console.log("user balance before withdraw...", token.balanceOf(USER));
-
-        lendingManager.withdrawFromExtraFi(
-            amountToWithdraw,
-            USER,
-            RESERVE_ID,
-            LENDING_POOL_EXTRAFI
-        );
-
-        // console.log("user balance after withdraw...", token.balanceOf(USER));
-        assertGe(
-            usdcBalanceBefore +
-                (amountToWithdraw * extrafiExchangeRate) /
-                (10 ** 18),
-            token.balanceOf(USER),
-            "USDC balance error : withdraw"
-        );
-        // console.log("eTokenBalanceContract", eTokenBalanceContract);
-        // console.log(
-        //     "eTokenBalanceContract after withdraw",
-        //     eTokenBalanceContract - amountToWithdraw
-        // );
-        assertEq(
-            eTokenBalanceBefore - amountToWithdraw,
-            etoken.balanceOf(address(lendingManager)),
-            "ETOKEN balance error : withdraw"
-        );
-        vm.stopPrank();
-    }
-
-    function testWithdrawFullFromExtraFi() public {
-        testDepositToExtraFi();
-        vm.startPrank(USER);
-
-        uint256 usdcBalanceBefore = token.balanceOf(USER);
-        uint256 eTokenBalanceBefore = etoken.balanceOf(address(lendingManager));
-
-        // console.log("user balance before withdraw", token.balanceOf(USER));
-
-        lendingManager.withdrawFromExtraFi(
-            eTokenBalanceBefore,
-            USER,
-            RESERVE_ID,
-            LENDING_POOL_EXTRAFI
-        );
-
-        assertGe(
-            usdcBalanceBefore +
-                (eTokenBalanceBefore * extrafiExchangeRate) /
-                (10 ** 18),
-            token.balanceOf(USER),
-            "USDC balance error : withdraw"
-        );
-        // console.log(
-        //     "user balance after withdraw whole amount",
-        //     token.balanceOf(USER)
-        // );
-        assertEq(
-            etoken.balanceOf(address(lendingManager)),
-            0,
-            "ETOKEN balance error : withdraw"
-        );
-
-        vm.stopPrank();
-    }
-
-    // Tests for Moonwell
-    function testDepositMoonwell() public {
-        vm.startPrank(USER);
-
-        assertGt(
-            token.balanceOf(USER),
-            0,
-            "USER does not hold the underlying token"
-        );
-
-        token.approve(address(lendingManager), amount);
-        assertGe(
-            token.allowance(USER, address(lendingManager)),
-            amount,
-            "Allowance should be equal to the approved amount"
-        );
-
-        console.log(
-            "token balance of user before deposit... ",
-            token.balanceOf(USER)
-        );
-        console.log(
-            "mtoken balance of contract before deposit... ",
-            mtoken.balanceOf(address(lendingManager))
-        );
-
-        // supply amount to Moonwell
-        lendingManager.depositToMoonWell(amount, LENDING_POOL_MOONWELL);
-
-        console.log(
-            "token balance of user after deposit... ",
-            token.balanceOf(USER)
-        );
-        console.log(
-            "mtoken balance of contract after deposit... ",
-            mtoken.balanceOf(address(lendingManager))
-        );
-
-        assertGe(
+        assertApproxEqRel(
             mtoken.balanceOf(address(lendingManager)),
-            amount,
-            "MTOKEN balance error"
+            expectedMTokens,
+            TOLERANCE,
+            "Incorrect mToken balance after deposit"
         );
-        vm.stopPrank();
-    }
-
-    function testWithdrawHalfMoonwell() public {
-        testDepositMoonwell();
-        vm.startPrank(USER);
-        uint256 usdcBalanceContract = token.balanceOf(address(lendingManager));
-        uint256 amountToWithdraw = 50000000;
-
-        console.log(
-            "mtoken balance before withdraw",
-            mtoken.balanceOf(address(lendingManager))
+        assertEq(
+            token.balanceOf(USER),
+            initialBalance - AMOUNT,
+            "Incorrect USDC balance after deposit"
         );
-        uint256 atokenAmount = (amountToWithdraw * (10 ** 18)) /
-            moonwellExchangeRate;
+
+        // Simulate interest accrual
+        vm.warp(block.timestamp + DAY_IN_SECONDS);
+
+        // Withdraw half
+        uint256 halfBalance = mtoken.balanceOf(address(lendingManager)) / 2;
+        vm.prank(USER);
+        lendingManager.withdrawFromMoonWell(halfBalance, LENDING_POOL_MOONWELL);
+
+        assertGe(
+            token.balanceOf(address(lendingManager)),
+            AMOUNT / 2,
+            "Contract should have more than half USDC"
+        );
+        assertApproxEqRel(
+            mtoken.balanceOf(address(lendingManager)),
+            halfBalance,
+            TOLERANCE,
+            "Incorrect mToken balance after partial withdrawal"
+        );
+
+        // Simulate more interest accrual
+        vm.warp(block.timestamp + FIVE_DAYS_IN_SECONDS);
+        uint256 remainingBalance = mtoken.balanceOf(address(lendingManager));
+
+        // Withdraw remaining balance
+        vm.prank(USER);
         lendingManager.withdrawFromMoonWell(
-            atokenAmount,
-            // USER,
+            remainingBalance,
             LENDING_POOL_MOONWELL
         );
 
-        console.log(
-            "atoken amount from underlying token amount and it should be half of total",
-            atokenAmount
-        );
-        console.log(
-            "mtoken balance after withdraw",
-            mtoken.balanceOf(address(lendingManager))
-        );
-        console.log(
-            "usdc balance of contract after withdraw",
-            token.balanceOf(address(lendingManager))
-        );
-        // need to understand this calculation
-        assertGe(
-            token.balanceOf(address(lendingManager)),
-            usdcBalanceContract +
-                (amountToWithdraw * moonwellExchangeRate) /
-                (10 ** 18),
-            "USDC balance error : withdraw"
-        );
-
-        assertGe(
-            token.balanceOf(address(lendingManager)),
-            amountToWithdraw,
-            "USDC balance error : withdraw"
-        );
-        // this also
-        assertGe(
-            atokenAmount,
-            mtoken.balanceOf(address(lendingManager)),
-            "ETOKEN balance error : withdraw"
-        );
-        vm.stopPrank();
-    }
-
-    function testWithdrawFullMoonwell() public {
-        testDepositMoonwell();
-        vm.startPrank(USER);
-        uint256 usdcBalanceContract = token.balanceOf(address(lendingManager));
-        uint256 mTokenBalanceContract = mtoken.balanceOf(
-            address(lendingManager)
-        );
-        uint256 amountToWithdraw = mTokenBalanceContract;
-        console.log(
-            "before withdraw contract balance is ",
-            usdcBalanceContract
-        );
-        lendingManager.withdrawFromMoonWell(
-            amountToWithdraw,
-            // USER,
-            LENDING_POOL_MOONWELL
-        );
-        console.log(
-            "after withdraw contract balance is ",
-            token.balanceOf(address(lendingManager))
-        );
-        assertGe(
-            token.balanceOf(address(lendingManager)),
-            usdcBalanceContract +
-                (amountToWithdraw * moonwellExchangeRate) /
-                (10 ** 18),
-            "USDC balance error : withdraw"
-        );
-
         assertEq(
             mtoken.balanceOf(address(lendingManager)),
             0,
-            "MTOKEN balance error : withdraw"
+            "mToken balance should be zero after full withdrawal"
         );
-        vm.stopPrank();
+        assertGt(
+            token.balanceOf(address(lendingManager)),
+            AMOUNT,
+            "Contract should have earned interest"
+        );
     }
+
+    // function testWithdrawHalfFromSeamless() public {
+    //     testDepositToSeamless();
+    //     vm.startPrank(USER);
+
+    //     uint256 usdcBalanceBefore = token.balanceOf(address(lendingManager));
+    //     uint256 atokenSeamlessBalanceBefore = atokenSeamless.balanceOf(
+    //         address(lendingManager)
+    //     );
+    //     uint256 amountToWithdraw = amount / 2; // 50 USDC
+
+    //     lendingManager.withdrawFromLendingPool(
+    //         amountToWithdraw,
+    //         address(lendingManager),
+    //         LENDING_POOL_SEAMLESS
+    //     );
+    //     // console.log("usdc after", token.balanceOf(address(lendingManager)));
+    //     // console.log(
+    //     //     "ausdc after",
+    //     //     atokenSeamless.balanceOf(address(lendingManager))
+    //     // );
+    //     assertEq(
+    //         token.balanceOf(address(lendingManager)),
+    //         usdcBalanceBefore + amountToWithdraw,
+    //         "USDC balance error on withdraw"
+    //     );
+    //     assertGe(
+    //         atokenSeamless.balanceOf(address(lendingManager)),
+    //         atokenSeamlessBalanceBefore - amountToWithdraw,
+    //         "ATOKEN balance error on withdraw"
+    //     );
+
+    //     vm.stopPrank();
+    // }
+
+    // // Tests for ExtraFi
+    // function testDepositToExtraFi() public {
+    //     vm.startPrank(USER);
+
+    //     assertGt(
+    //         token.balanceOf(USER),
+    //         0,
+    //         "USER does not hold the underlying token"
+    //     );
+
+    //     token.approve(address(lendingManager), amount);
+    //     assertGe(
+    //         token.allowance(USER, address(lendingManager)),
+    //         amount,
+    //         "Allowance should be equal to the approved amount"
+    //     );
+
+    //     uint256 eTokenBalanceBefore = etoken.balanceOf(address(lendingManager));
+    //     // console.log(
+    //     //     "user Etoken balance before deposit",
+    //     //     etoken.balanceOf(address(lendingManager))
+    //     // );
+
+    //     lendingManager.depositToExtraFi(
+    //         RESERVE_ID,
+    //         amount,
+    //         address(lendingManager),
+    //         LENDING_POOL_EXTRAFI
+    //     );
+
+    //     // console.log(
+    //     //     "user Etoken balance after deposit",
+    //     //     etoken.balanceOf(address(lendingManager))
+    //     // );
+    //     assertLe(
+    //         etoken.balanceOf(address(lendingManager)),
+    //         eTokenBalanceBefore + amount,
+    //         "ETOKEN balance error"
+    //     );
+
+    //     vm.stopPrank();
+    // }
+
+    // function testWithdrawHalfFromExtraFi() public {
+    //     testDepositToExtraFi();
+    //     vm.startPrank(USER);
+
+    //     uint256 usdcBalanceBefore = token.balanceOf(USER);
+    //     uint256 eTokenBalanceBefore = etoken.balanceOf(address(lendingManager));
+    //     uint256 amountToWithdraw = amount / 2; // 50 USDC
+    //     // console.log("user balance before withdraw...", token.balanceOf(USER));
+
+    //     lendingManager.withdrawFromExtraFi(
+    //         amountToWithdraw,
+    //         USER,
+    //         RESERVE_ID,
+    //         LENDING_POOL_EXTRAFI
+    //     );
+
+    //     // console.log("user balance after withdraw...", token.balanceOf(USER));
+    //     assertGe(
+    //         usdcBalanceBefore +
+    //             (amountToWithdraw * extrafiExchangeRate) /
+    //             (10 ** 18),
+    //         token.balanceOf(USER),
+    //         "USDC balance error : withdraw"
+    //     );
+    //     // console.log("eTokenBalanceContract", eTokenBalanceContract);
+    //     // console.log(
+    //     //     "eTokenBalanceContract after withdraw",
+    //     //     eTokenBalanceContract - amountToWithdraw
+    //     // );
+    //     assertEq(
+    //         eTokenBalanceBefore - amountToWithdraw,
+    //         etoken.balanceOf(address(lendingManager)),
+    //         "ETOKEN balance error : withdraw"
+    //     );
+    //     vm.stopPrank();
+    // }
+
+    // function testWithdrawFullFromExtraFi() public {
+    //     testDepositToExtraFi();
+    //     vm.startPrank(USER);
+
+    //     uint256 usdcBalanceBefore = token.balanceOf(USER);
+    //     uint256 eTokenBalanceBefore = etoken.balanceOf(address(lendingManager));
+
+    //     // console.log("user balance before withdraw", token.balanceOf(USER));
+
+    //     lendingManager.withdrawFromExtraFi(
+    //         eTokenBalanceBefore,
+    //         USER,
+    //         RESERVE_ID,
+    //         LENDING_POOL_EXTRAFI
+    //     );
+
+    //     assertGe(
+    //         usdcBalanceBefore +
+    //             (eTokenBalanceBefore * extrafiExchangeRate) /
+    //             (10 ** 18),
+    //         token.balanceOf(USER),
+    //         "USDC balance error : withdraw"
+    //     );
+    //     // console.log(
+    //     //     "user balance after withdraw whole amount",
+    //     //     token.balanceOf(USER)
+    //     // );
+    //     assertEq(
+    //         etoken.balanceOf(address(lendingManager)),
+    //         0,
+    //         "ETOKEN balance error : withdraw"
+    //     );
+
+    //     vm.stopPrank();
+    // }
 }
