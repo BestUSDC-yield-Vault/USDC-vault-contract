@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./interfaces/aave/IPool.sol";
 import "./interfaces/extrafi/ILendingPool.sol";
 import "./interfaces/moonwell/IMtoken.sol";
-import "./interfaces/uniswap/ISwapRouter.sol";
+import "./interfaces/moonwell/IComptroller.sol";
 
 /**
  * @title LendingManager
@@ -190,5 +190,12 @@ contract LendingManager {
     ) public view returns (uint256 rate) {
         IMToken pool = IMToken(lendingPool);
         rate = pool.exchangeRateStored();
+    }
+
+    function claimRewardFromMoonwell() public {
+        IComptroller comptroller = IComptroller(
+            0xfBb21d0380beE3312B33c4353c8936a0F13EF26C
+        );
+        comptroller.claimReward(address(this));
     }
 }

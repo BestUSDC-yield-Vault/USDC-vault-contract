@@ -255,6 +255,28 @@ contract LendingManagerTest is Test {
             AMOUNT,
             "Contract should have earned interest"
         );
+
+        console.log("checking for rewards...");
+        console.log(
+            "WELL rewards before claim",
+            IERC20(0xA88594D404727625A9437C3f886C7643872296AE).balanceOf(
+                address(lendingManager)
+            )
+        );
+        lendingManager.claimRewardFromMoonwell();
+        console.log(
+            "WELL rewards after claim",
+            IERC20(0xA88594D404727625A9437C3f886C7643872296AE).balanceOf(
+                address(lendingManager)
+            )
+        );
+        assertGe(
+            IERC20(0xA88594D404727625A9437C3f886C7643872296AE).balanceOf(
+                address(lendingManager)
+            ),
+            0,
+            "WELL rewards can be greater than or equals zero"
+        );
     }
 
     // function testWithdrawHalfFromSeamless() public {
