@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./interfaces/aave/IPool.sol";
 import "./interfaces/extrafi/ILendingPool.sol";
+import "./interfaces/extrafi/IStakingRewards.sol";
 import "./interfaces/moonwell/IMtoken.sol";
 import "./interfaces/moonwell/IComptroller.sol";
 
@@ -55,6 +56,18 @@ contract LendingManager {
         pool.deposit(_reserveId, _amount, _onBehalfOf, 0);
     }
 
+    function depositAndStakeToExtraFi(
+        uint256 _reserveId,
+        uint256 _amount,
+        address _onBehalfOf,
+        address _lendingPool
+    ) public {
+        ILendingPool pool = ILendingPool(_lendingPool);
+        IERC20(usdc).transferFrom(msg.sender, address(this), _amount);
+        IERC20(usdc).approve(address(pool), _amount);
+        pool.depositAndStake(_reserveId, _amount, _onBehalfOf, 0);
+    }
+
     /**
      * @notice Deposits the specified amount of USDC to the MoonWell lending pool.
      * @param _amount The amount of USDC to deposit.
@@ -104,6 +117,20 @@ contract LendingManager {
             _eTokenAmount
         );
         return pool.redeem(_reserveId, _eTokenAmount, _to, false); //can be static first and last value (receiveNativeEth = false)
+    }
+
+    function unStakeAndWithdrawFromExtraFi(
+        uint256 _eTokenAmount,
+        address _to,
+        uint256 _reserveId,
+        address _lendingPool
+    ) public returns (uint256) {
+        ILendingPool pool = ILendingPool(_lendingPool);
+        IERC20(getATokenAddressOfExtraFi(_reserveId, _lendingPool)).approve(
+            address(pool),
+            _eTokenAmount
+        );
+        return pool.unStakeAndWithdraw(_reserveId, _eTokenAmount, _to, false); //can be static first and last value (receiveNativeEth = false)
     }
 
     /**
@@ -197,5 +224,22 @@ contract LendingManager {
             0xfBb21d0380beE3312B33c4353c8936a0F13EF26C
         );
         comptroller.claimReward(address(this));
+    }
+
+    function claimRewardsFromExtraFi() public {
+        IStakingRewards rewardController = IStakingRewards(
+            0xE61662C09c30E1F3f3CbAeb9BC1F13838Ed18957
+        );
+        rewardController.claim();
+    }
+
+    function getRewardsForExtraFi(
+        address sender,
+        address rewardToken
+    ) public view returns (uint256 rewards) {
+        IStakingRewards rewardController = IStakingRewards(
+            0xE61662C09c30E1F3f3CbAeb9BC1F13838Ed18957
+        );
+        rewards = rewardController.userRewardsClaimable(sender, rewardToken);
     }
 }

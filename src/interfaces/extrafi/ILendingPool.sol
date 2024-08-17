@@ -94,6 +94,20 @@ interface ILendingPool {
         uint16 referralCode
     ) external payable returns (uint256);
 
+    function depositAndStake(
+        uint256 reserveId,
+        uint256 amount,
+        address onBehalfOf,
+        uint16 referralCode
+    ) external payable returns (uint256);
+
+    function unStakeAndWithdraw(
+        uint256 reserveId,
+        uint256 eTokenAmount,
+        address to,
+        bool receiveNativeETH
+    ) external returns (uint256);
+
     /**
      * @dev User redeems eTokens in exchange for the underlying asset
      * E.g. User has 100 eUSDC, and the current exchange rate of eUSDC and USDC is 1:1.1
