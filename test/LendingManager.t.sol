@@ -133,66 +133,66 @@ contract LendingManagerTest is Test {
     /**
      * @dev Test depositing and withdrawing from AAVE lending pool
      */
-    // function testDepositWithdrawAave() public {
-    //     uint256 initialBalance = token.balanceOf(USER);
-    //     approveAndDeposit(AMOUNT, LENDING_POOL_AAVE);
+    function testDepositWithdrawAave() public {
+        uint256 initialBalance = token.balanceOf(USER);
+        approveAndDeposit(AMOUNT, LENDING_POOL_AAVE);
 
-    //     assertEq(
-    //         atoken.balanceOf(address(lendingManager)),
-    //         AMOUNT,
-    //         "Incorrect aToken balance after deposit"
-    //     );
-    //     assertEq(
-    //         token.balanceOf(USER),
-    //         initialBalance - AMOUNT,
-    //         "Incorrect USDC balance after deposit"
-    //     );
+        assertGe(
+            atoken.balanceOf(address(lendingManager)),
+            AMOUNT,
+            "Incorrect aToken balance after deposit"
+        );
+        assertEq(
+            token.balanceOf(USER),
+            initialBalance - AMOUNT,
+            "Incorrect USDC balance after deposit"
+        );
 
-    //     // Simulate interest accrual
-    //     vm.warp(block.timestamp + DAY_IN_SECONDS);
+        // Simulate interest accrual
+        vm.warp(block.timestamp + DAY_IN_SECONDS);
 
-    //     uint256 balanceAfterOneDay = atoken.balanceOf(address(lendingManager));
-    //     assertGt(
-    //         balanceAfterOneDay,
-    //         AMOUNT,
-    //         "No interest accrued after one day"
-    //     );
+        uint256 balanceAfterOneDay = atoken.balanceOf(address(lendingManager));
+        assertGt(
+            balanceAfterOneDay,
+            AMOUNT,
+            "No interest accrued after one day"
+        );
 
-    //     // Withdraw half
-    //     uint256 halfBalance = balanceAfterOneDay / 2;
-    //     withdraw(halfBalance, LENDING_POOL_AAVE);
+        // Withdraw half
+        uint256 halfBalance = balanceAfterOneDay / 2;
+        withdraw(halfBalance, LENDING_POOL_AAVE);
 
-    //     assertApproxEqRel(
-    //         atoken.balanceOf(address(lendingManager)),
-    //         halfBalance,
-    //         TOLERANCE,
-    //         "Incorrect aToken balance after partial withdrawal"
-    //     );
+        assertApproxEqRel(
+            atoken.balanceOf(address(lendingManager)),
+            halfBalance,
+            TOLERANCE,
+            "Incorrect aToken balance after partial withdrawal"
+        );
 
-    //     // Withdraw remaining balance
-    //     vm.warp(block.timestamp + FIVE_DAYS_IN_SECONDS);
-    //     uint256 remainingBalance = atoken.balanceOf(address(lendingManager));
+        // Withdraw remaining balance
+        vm.warp(block.timestamp + FIVE_DAYS_IN_SECONDS);
+        uint256 remainingBalance = atoken.balanceOf(address(lendingManager));
 
-    //     // Ensure the aToken balance has increased due to further accrued interest
-    //     assertGt(
-    //         remainingBalance,
-    //         halfBalance,
-    //         "aToken balance should have increased due to additional interest accrual"
-    //     );
+        // Ensure the aToken balance has increased due to further accrued interest
+        assertGt(
+            remainingBalance,
+            halfBalance,
+            "aToken balance should have increased due to additional interest accrual"
+        );
 
-    //     withdraw(remainingBalance, LENDING_POOL_AAVE);
+        withdraw(remainingBalance, LENDING_POOL_AAVE);
 
-    //     assertEq(
-    //         atoken.balanceOf(address(lendingManager)),
-    //         0,
-    //         "aToken balance should be zero after full withdrawal"
-    //     );
-    //     assertGt(
-    //         token.balanceOf(address(lendingManager)),
-    //         AMOUNT,
-    //         "Contract should have earned interest"
-    //     );
-    // }
+        assertEq(
+            atoken.balanceOf(address(lendingManager)),
+            0,
+            "aToken balance should be zero after full withdrawal"
+        );
+        assertGt(
+            token.balanceOf(address(lendingManager)),
+            AMOUNT,
+            "Contract should have earned interest"
+        );
+    }
 
     /**
      * @dev Test depositing and withdrawing from Moonwell lending pool
