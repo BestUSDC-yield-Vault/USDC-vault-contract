@@ -51,7 +51,7 @@ contract LendingManager {
         address _lendingPool
     ) public {
         ILendingPool pool = ILendingPool(_lendingPool);
-        // IERC20(usdc).transferFrom(msg.sender, address(this), _amount);
+        IERC20(usdc).transferFrom(msg.sender, address(this), _amount);
         IERC20(usdc).approve(address(pool), _amount);
         pool.deposit(_reserveId, _amount, _onBehalfOf, 0);
     }

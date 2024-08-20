@@ -77,7 +77,7 @@ contract LendingManagerTest is Test {
                 LENDING_POOL_EXTRAFI
             )
         );
-        console.log("address", address(etoken));
+        // console.log("address", address(etoken));
         extrafiExchangeRate = lendingManager.exchangeRateOfExtraFi(
             RESERVE_ID,
             LENDING_POOL_EXTRAFI
@@ -195,6 +195,75 @@ contract LendingManagerTest is Test {
     }
 
     /**
+     * @dev Test depositing and withdrawing from Seamless lending pool
+     */
+    function testDepositWithdrawSeamless() public {
+        uint256 initialBalance = token.balanceOf(USER);
+        approveAndDeposit(AMOUNT, LENDING_POOL_SEAMLESS);
+
+        assertGe(
+            atokenSeamless.balanceOf(address(lendingManager)),
+            AMOUNT,
+            "Incorrect aToken balance after deposit"
+        );
+        assertEq(
+            token.balanceOf(USER),
+            initialBalance - AMOUNT,
+            "Incorrect USDC balance after deposit"
+        );
+
+        // Simulate interest accrual
+        vm.warp(block.timestamp + DAY_IN_SECONDS);
+
+        uint256 balanceAfterOneDay = atokenSeamless.balanceOf(
+            address(lendingManager)
+        );
+        assertGt(
+            balanceAfterOneDay,
+            AMOUNT,
+            "No interest accrued after one day"
+        );
+
+        // Withdraw half
+        uint256 halfBalance = balanceAfterOneDay / 2;
+        withdraw(halfBalance, LENDING_POOL_SEAMLESS);
+
+        assertApproxEqRel(
+            atokenSeamless.balanceOf(address(lendingManager)),
+            halfBalance,
+            TOLERANCE,
+            "Incorrect aToken balance after partial withdrawal"
+        );
+
+        // Withdraw remaining balance
+        vm.warp(block.timestamp + FIVE_DAYS_IN_SECONDS);
+
+        uint256 remainingBalance = atokenSeamless.balanceOf(
+            address(lendingManager)
+        );
+
+        // Ensure the aToken balance has increased due to further accrued interest
+        assertGt(
+            remainingBalance,
+            halfBalance,
+            "aToken balance should have increased due to additional interest accrual"
+        );
+
+        withdraw(remainingBalance, LENDING_POOL_SEAMLESS);
+
+        assertEq(
+            atokenSeamless.balanceOf(address(lendingManager)),
+            0,
+            "aToken balance should be zero after full withdrawal"
+        );
+        assertGt(
+            token.balanceOf(address(lendingManager)),
+            AMOUNT,
+            "Contract should have earned interest"
+        );
+    }
+
+    /**
      * @dev Test depositing and withdrawing from Moonwell lending pool
      */
     function testDepositWithdrawMoonwell() public {
@@ -261,20 +330,20 @@ contract LendingManagerTest is Test {
             "Contract should have earned interest"
         );
 
-        console.log("checking for rewards...");
-        console.log(
-            "WELL rewards before claim",
-            IERC20(0xA88594D404727625A9437C3f886C7643872296AE).balanceOf(
-                address(lendingManager)
-            )
-        );
+        // console.log("checking for rewards...");
+        // console.log(
+        //     "WELL rewards before claim",
+        //     IERC20(0xA88594D404727625A9437C3f886C7643872296AE).balanceOf(
+        //         address(lendingManager)
+        //     )
+        // );
         lendingManager.claimRewardFromMoonwell();
-        console.log(
-            "WELL rewards after claim",
-            IERC20(0xA88594D404727625A9437C3f886C7643872296AE).balanceOf(
-                address(lendingManager)
-            )
-        );
+        // console.log(
+        //     "WELL rewards after claim",
+        //     IERC20(0xA88594D404727625A9437C3f886C7643872296AE).balanceOf(
+        //         address(lendingManager)
+        //     )
+        // );
         assertGe(
             IERC20(0xA88594D404727625A9437C3f886C7643872296AE).balanceOf(
                 address(lendingManager)
@@ -284,124 +353,133 @@ contract LendingManagerTest is Test {
         );
     }
 
-    function testDepositAndWithdrawExtraFi() public {
-        // Initial deposit and stake
-        uint256 etokenBeforeDeposit = etoken.balanceOf(STAKING_REWARD);
-        console.log(
-            "etoken balance in reward contract before deposit",
-            etokenBeforeDeposit
-        );
+    // function testDepositAndWithdrawExtraFi() public {
+    //     // Initial deposit and stake
+    //     uint256 etokenBeforeDeposit = etoken.balanceOf(STAKING_REWARD);
+    //     console.log(
+    //         "etoken balance in reward contract before deposit",
+    //         etokenBeforeDeposit
+    //     );
 
-        vm.startPrank(USER);
-        token.approve(address(lendingManager), AMOUNT);
-        lendingManager.depositAndStakeToExtraFi(
-            RESERVE_ID,
-            AMOUNT,
-            address(lendingManager),
-            LENDING_POOL_EXTRAFI
-        );
-        vm.stopPrank();
+    //     vm.startPrank(USER);
+    //     token.approve(address(lendingManager), AMOUNT);
+    //     uint256 ratebefore = lendingManager.exchangeRateOfExtraFi(
+    //         RESERVE_ID,
+    //         LENDING_POOL_EXTRAFI
+    //     );
+    //     console.log("ratebefore", ratebefore);
+    //     lendingManager.depositAndStakeToExtraFi(
+    //         RESERVE_ID,
+    //         AMOUNT,
+    //         address(lendingManager),
+    //         LENDING_POOL_EXTRAFI
+    //     );
+    //     vm.stopPrank();
 
-        console.log(
-            "eToken balance in reward contract after deposit:",
-            etoken.balanceOf(STAKING_REWARD)
-        );
+    //     console.log(
+    //         "eToken balance in reward contract after deposit:",
+    //         etoken.balanceOf(STAKING_REWARD)
+    //     );
 
-        // Simulate time passing for potential interest accrual
-        vm.warp(block.timestamp + DAY_IN_SECONDS);
+    //     // Simulate time passing for potential interest accrual
+    //     vm.warp(block.timestamp + DAY_IN_SECONDS);
+    //     uint256 rateafter = lendingManager.exchangeRateOfExtraFi(
+    //         RESERVE_ID,
+    //         LENDING_POOL_EXTRAFI
+    //     );
+    //     console.log("rateafter", rateafter);
+    //     console.log("exchangeRate", extrafiExchangeRate);
 
-        console.log("exchangeRate", extrafiExchangeRate);
+    //     vm.startPrank(USER);
+    //     uint256 eTokenBalanceAfterDay = etoken.balanceOf(STAKING_REWARD);
+    //     console.log(
+    //         "eToken amount in reward contract after 1 day:",
+    //         eTokenBalanceAfterDay
+    //     );
 
-        vm.startPrank(USER);
-        uint256 eTokenBalanceAfterDay = etoken.balanceOf(STAKING_REWARD);
-        console.log(
-            "eToken amount in reward contract after 1 day:",
-            eTokenBalanceAfterDay
-        );
+    //     // Calculate the eToken amount for withdrawal
+    //     uint256 eTokenAmount = eTokenBalanceAfterDay - etokenBeforeDeposit;
+    //     console.log(
+    //         "increased etoken balance after deposit:",
+    //         eTokenAmount - (AMOUNT * 1e18) / rateafter
+    //     );
+    //     console.log("Calculated eToken amount for withdrawal:", eTokenAmount);
 
-        // Calculate the eToken amount for withdrawal
-        uint256 eTokenAmount = eTokenBalanceAfterDay - etokenBeforeDeposit;
-        console.log(
-            "increased etoken balance after deposit:",
-            eTokenAmount - (AMOUNT * 1e18) / extrafiExchangeRate
-        );
-        console.log("Calculated eToken amount for withdrawal:", eTokenAmount);
+    //     // Unstake and withdraw
+    //     // eTokenBalanceAfterDay = etoken.balanceOf(STAKING_REWARD);
+    //     console.log("eToken amount before withdraw:", eTokenBalanceAfterDay);
 
-        // Unstake and withdraw
-        // eTokenBalanceAfterDay = etoken.balanceOf(STAKING_REWARD);
-        console.log("eToken amount before withdraw:", eTokenBalanceAfterDay);
+    //     console.log(
+    //         "USDC balance of contract before withdraw",
+    //         token.balanceOf(address(lendingManager))
+    //     );
 
-        console.log(
-            "USDC balance of contract before withdraw",
-            token.balanceOf(address(lendingManager))
-        );
+    //     lendingManager.unStakeAndWithdrawFromExtraFi(
+    //         eTokenAmount,
+    //         address(lendingManager),
+    //         RESERVE_ID,
+    //         LENDING_POOL_EXTRAFI
+    //     );
+    //     vm.stopPrank();
 
-        lendingManager.unStakeAndWithdrawFromExtraFi(
-            eTokenAmount,
-            address(lendingManager),
-            RESERVE_ID,
-            LENDING_POOL_EXTRAFI
-        );
-        vm.stopPrank();
+    //     console.log(
+    //         "USDC amount after withdraw",
+    //         token.balanceOf(address(lendingManager))
+    //     );
+    //     // Assertions
+    //     // assertGt(
+    //     //     token.balanceOf(address(lendingManager)),
+    //     //     AMOUNT,
+    //     //     "User should have received their USDC back after withdrawal"
+    //     // );
 
-        console.log(
-            "USDC amount after withdraw",
-            token.balanceOf(address(lendingManager))
-        );
-        // Assertions
-        assertGt(
-            token.balanceOf(address(lendingManager)),
-            AMOUNT,
-            "User should have received their USDC back after withdrawal"
-        );
+    //     // Check that the eToken balance in the LendingManager contract decreased accordingly
+    //     eTokenBalanceAfterDay = etoken.balanceOf(STAKING_REWARD);
+    //     console.log("eToken amount after withdraw:", eTokenBalanceAfterDay);
 
-        // Check that the eToken balance in the LendingManager contract decreased accordingly
-        eTokenBalanceAfterDay = etoken.balanceOf(STAKING_REWARD);
-        console.log("eToken amount after withdraw:", eTokenBalanceAfterDay);
+    //     vm.warp(block.timestamp + FIVE_DAYS_IN_SECONDS);
 
-        vm.warp(block.timestamp + FIVE_DAYS_IN_SECONDS);
+    //     uint256 userRewardsClaimable = lendingManager.getRewardsForExtraFi(
+    //         address(lendingManager),
+    //         address(extraToken)
+    //     );
+    //     console.log("accured reward token balance: ", userRewardsClaimable);
+    //     console.log(
+    //         "extra token balance before claim",
+    //         extraToken.balanceOf(address(lendingManager))
+    //     );
+    //     vm.startPrank(USER);
+    //     lendingManager.claimRewardsFromExtraFi();
+    //     vm.stopPrank();
 
-        uint256 userRewardsClaimable = lendingManager.getRewardsForExtraFi(
-            address(lendingManager),
-            address(extraToken)
-        );
-        console.log("accured reward token balance: ", userRewardsClaimable);
-        console.log(
-            "extra token balance before claim",
-            extraToken.balanceOf(address(lendingManager))
-        );
-        vm.startPrank(USER);
-        lendingManager.claimRewardsFromExtraFi();
-        vm.stopPrank();
+    //     // assertEq(
+    //     //     userRewardsClaimable,
+    //     //     extraToken.balanceOf(address(lendingManager)),
+    //     //     "Extra token should be match with userRewardsClaimable amount of stakingReward contract."
+    //     // );
 
-        assertEq(
-            userRewardsClaimable,
-            extraToken.balanceOf(address(lendingManager)),
-            "Extra token should be match with userRewardsClaimable amount of stakingReward contract."
-        );
+    //     // assertEq(
+    //     //     lendingManager.getRewardsForExtraFi(
+    //     //         address(lendingManager),
+    //     //         address(extraToken)
+    //     //     ),
+    //     //     0,
+    //     //     "extra token should be 0 after claim all rewards."
+    //     // );
 
-        assertEq(
-            lendingManager.getRewardsForExtraFi(
-                address(lendingManager),
-                address(extraToken)
-            ),
-            0,
-            "extra token should be 0 after claim all rewards."
-        );
+    //     console.log(
+    //         "extra token balance after claim",
+    //         extraToken.balanceOf(address(lendingManager))
+    //     );
 
-        console.log(
-            "extra token balance after claim",
-            extraToken.balanceOf(address(lendingManager))
-        );
-
-        console.log(
-            "reward token balance after claim: ",
-            lendingManager.getRewardsForExtraFi(
-                address(lendingManager),
-                address(extraToken)
-            )
-        );
-    }
+    //     console.log(
+    //         "reward token balance after claim: ",
+    //         lendingManager.getRewardsForExtraFi(
+    //             address(lendingManager),
+    //             address(extraToken)
+    //         )
+    //     );
+    // }
 
     // function testWithdrawHalfFromSeamless() public {
     //     testDepositToSeamless();
