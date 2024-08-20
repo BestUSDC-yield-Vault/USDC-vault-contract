@@ -27,7 +27,7 @@ contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard, Pausable {
         Moonwell,
         Seamless
     }
-    Protocol public currentProtocol = Protocol.Aave;
+    Protocol public currentProtocol = Protocol.Seamless;
 
     // Lending pool addresses for various protocols
     address public lendingPoolAave;
@@ -37,7 +37,6 @@ contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard, Pausable {
 
     // Underlying asset and other configuration parameters
     IERC20 public immutable underlyingAsset;
-    uint256 public usdcBalance;
     uint16 public referralCode;
     uint256 public constant MAX_USDC_CAP = 5_000_000 * 1e6; // 5 million USDC
 
@@ -130,7 +129,7 @@ contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard, Pausable {
         return
             assets.mulDiv(
                 totalSupply() + 10 ** _decimalsOffset(),
-                usdcBalance + 1,
+                balanceOfUSDC() + 1,
                 rounding
             );
     }
@@ -144,7 +143,7 @@ contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard, Pausable {
     ) internal view virtual override returns (uint256) {
         return
             shares.mulDiv(
-                usdcBalance + 1,
+                balanceOfUSDC() + 1,
                 totalSupply() + 10 ** _decimalsOffset(),
                 rounding
             );
@@ -172,10 +171,10 @@ contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard, Pausable {
         whenNotPaused
         returns (uint256)
     {
-        require(
-            usdcBalance + assets <= MAX_USDC_CAP,
-            "Vault: Deposit exceeds maximum USDC cap"
-        );
+        // require(
+        //     usdcBalance + assets <= MAX_USDC_CAP,
+        //     "Vault: Deposit exceeds maximum USDC cap"
+        // );
         uint256 maxAssets = maxDeposit(receiver);
         if (assets > maxAssets) {
             revert ERC4626ExceededMaxDeposit(receiver, assets, maxAssets);
@@ -183,7 +182,6 @@ contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard, Pausable {
 
         uint256 shares = previewDeposit(assets);
         _deposit(_msgSender(), receiver, assets, shares);
-        usdcBalance += assets;
         _afterDeposit(assets);
 
         // stakeTimeEpochMapping[msg.sender] = uint32(block.timestamp);
@@ -209,10 +207,10 @@ contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard, Pausable {
         returns (uint256)
     {
         uint256 assets = previewMint(shares);
-        require(
-            usdcBalance + assets <= MAX_USDC_CAP,
-            "Vault: Mint exceeds maximum USDC cap"
-        );
+        // require(
+        //     usdcBalance + assets <= MAX_USDC_CAP,
+        //     "Vault: Mint exceeds maximum USDC cap"
+        // );
 
         uint256 maxShares = maxMint(receiver);
         if (shares > maxShares) {
@@ -220,7 +218,7 @@ contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard, Pausable {
         }
 
         _deposit(_msgSender(), receiver, assets, shares);
-        usdcBalance += assets;
+        // usdcBalance += assets;
 
         _afterDeposit(assets);
         // stakeTimeEpochMapping[msg.sender] = uint32(block.timestamp);
@@ -236,12 +234,12 @@ contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard, Pausable {
             depositToLendingPool(_amount, address(this), lendingPoolAave);
         } else if (currentProtocol == Protocol.Seamless) {
             depositToLendingPool(_amount, address(this), lendingPoolSeamless);
+        } else if (currentProtocol == Protocol.Moonwell) {
+            depositToMoonWell(_amount, lendingPoolMoonwell);
         } else if (currentProtocol == Protocol.ExtraFi) {
             depositToExtraFi(25, _amount, address(this), lendingPoolExtraFi);
         } else if (currentProtocol == Protocol.ExtraFi2) {
             depositToExtraFi(24, _amount, address(this), lendingPoolExtraFi);
-        } else if (currentProtocol == Protocol.Moonwell) {
-            depositToMoonWell(_amount, lendingPoolMoonwell);
         }
     }
 
@@ -267,16 +265,14 @@ contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard, Pausable {
         }
 
         uint256 shares = previewWithdraw(assets);
-        uint256 aTokenBalance = IERC20(getCurrentProtocolAtoken()).balanceOf(
-            address(this)
-        );
+        uint256 aTokenBalance = getCurrentAtokenBalance();
+
         uint256 aTokensToWithdraw = (shares * aTokenBalance) / totalSupply();
 
-        // if (msg.sender != owner) {
-        //     _spendAllowance(owner, msg.sender, shares);
-        // }
+        if (msg.sender != owner) {
+            _spendAllowance(owner, msg.sender, shares);
+        }
 
-        usdcBalance -= assets;
         _burn(owner, shares);
 
         uint256 amountWithdrawn = _withdrawFromLendingPool(
@@ -304,17 +300,16 @@ contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard, Pausable {
             revert ERC4626ExceededMaxRedeem(owner, shares, maxShares);
         }
 
-        uint256 assets = previewRedeem(shares);
-        uint256 aTokenBalance = IERC20(getCurrentProtocolAtoken()).balanceOf(
-            address(this)
-        );
+        // uint256 assets = previewRedeem(shares);
+        uint256 aTokenBalance = getCurrentAtokenBalance();
+
         uint256 aTokensToWithdraw = (shares * aTokenBalance) / totalSupply();
 
-        // if (msg.sender != owner) {
-        //     _spendAllowance(owner, msg.sender, shares);
-        // }
+        if (msg.sender != owner) {
+            _spendAllowance(owner, msg.sender, shares);
+        }
 
-        usdcBalance -= assets;
+        // usdcBalance -= assets;
 
         uint256 amountWithdrawn = _withdrawFromLendingPool(
             aTokensToWithdraw,
@@ -388,18 +383,29 @@ contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard, Pausable {
      * @dev Gets the address of the aToken for the current protocol.
      * @return The address of the aToken.
      */
-    function getCurrentProtocolAtoken() public view returns (address) {
+    function getCurrentAtokenBalance() public view returns (uint256) {
         if (currentProtocol == Protocol.Aave) {
-            return getATokenAddress(lendingPoolAave);
+            return
+                IERC20(getATokenAddress(lendingPoolAave)).balanceOf(
+                    address(this)
+                );
         } else if (currentProtocol == Protocol.Seamless) {
-            return getATokenAddress(lendingPoolSeamless);
-        } else if (currentProtocol == Protocol.ExtraFi) {
-            return getATokenAddressOfExtraFi(25, lendingPoolExtraFi);
-        } else if (currentProtocol == Protocol.ExtraFi2) {
-            return getATokenAddressOfExtraFi(24, lendingPoolExtraFi);
+            return
+                IERC20(getATokenAddress(lendingPoolSeamless)).balanceOf(
+                    address(this)
+                );
         } else if (currentProtocol == Protocol.Moonwell) {
-            return lendingPoolMoonwell;
+            return IERC20(lendingPoolMoonwell).balanceOf(address(this));
         }
+        // else if (currentProtocol == Protocol.ExtraFi) {
+        //     return
+        //         IERC20(getATokenAddressOfExtraFi(25, lendingPoolExtraFi))
+        //             .balanceOf(address(this));
+        // } else if (currentProtocol == Protocol.ExtraFi2) {
+        //     return
+        //         IERC20(getATokenAddressOfExtraFi(24, lendingPoolExtraFi))
+        //             .balanceOf(address(this));
+        // }
         revert("Invalid protocol");
     }
 
@@ -422,8 +428,7 @@ contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard, Pausable {
         );
 
         // Get the address of the aToken or equivalent token for the current protocol
-        uint256 balanceToRebalance = IERC20(getCurrentProtocolAtoken())
-            .balanceOf(address(this));
+        uint256 balanceToRebalance = getCurrentAtokenBalance();
 
         require(balanceToRebalance > 0, "Vault: No assets to rebalance");
 
@@ -446,6 +451,24 @@ contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard, Pausable {
         emit Rebalance(_protocol, assetsToDeposit);
     }
 
+    function balanceOfUSDC() public view returns (uint256) {
+        uint256 usdcAmount;
+        if (currentProtocol == Protocol.Aave) {
+            usdcAmount = IERC20(getATokenAddress(lendingPoolAave)).balanceOf(
+                address(this)
+            );
+        } else if (currentProtocol == Protocol.Seamless) {
+            usdcAmount = IERC20(getATokenAddress(lendingPoolSeamless))
+                .balanceOf(address(this));
+        } else if (currentProtocol == Protocol.Moonwell) {
+            usdcAmount =
+                (IERC20(lendingPoolMoonwell).balanceOf(address(this)) *
+                    exchangeRateOfMoonWell(lendingPoolMoonwell)) /
+                1e18;
+        }
+        return usdcAmount;
+    }
+
     /*//////////////////////////////////////////////////////////////
                               ADMIN FUNCTIONS
     //////////////////////////////////////////////////////////////*/
@@ -461,10 +484,7 @@ contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard, Pausable {
     /// @notice Pauses deposits and withdraws all funds from the underlying platform
     function panic() public onlyOwner {
         pause();
-        _withdrawFromLendingPool(
-            IERC20(getCurrentProtocolAtoken()).balanceOf(address(this)),
-            address(this)
-        );
+        _withdrawFromLendingPool(getCurrentAtokenBalance(), address(this));
     }
 
     /// @notice Pauses deposits but leaves funds still invested
@@ -476,9 +496,7 @@ contract Vault is ERC4626, LendingManager, Ownable, ReentrancyGuard, Pausable {
     function unpause() external onlyOwner {
         _unpause();
 
-        _afterDeposit(
-            IERC20(getCurrentProtocolAtoken()).balanceOf(address(this))
-        );
+        _afterDeposit(getCurrentAtokenBalance());
     }
 
     /**
